@@ -88,6 +88,7 @@ struct ConfigurationEnvironmentTy {
   int32_t MaxTeams = -1;
   int32_t ReductionBufferSize = 0;
   //}
+  uint8_t AccessesArgMemOnly = 0;
 };
 
 // NOTE: Please don't change the order of those members as their indices are
