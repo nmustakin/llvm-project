@@ -8857,6 +8857,12 @@ struct AAMemoryLocationCallSite final : AAMemoryLocationImpl {
     };
     if (!FnAA->checkForAllAccessesToMemoryKind(AccessPred, ALL_LOCATIONS))
       return indicatePessimisticFixpoint();
+    // Check if callsite is a barrier 
+    // write your own isBarrier function 
+    // Use KernelInfoState::ReachingKernelEntries to get a list of kernels
+    // Loop over all kernels and accumulate their memory effects onto a 
+    // single effect
+    // Assign the barriers effect to that single effect
     return Changed ? ChangeStatus::CHANGED : ChangeStatus::UNCHANGED;
   }
 
