@@ -2151,6 +2151,28 @@ bool AANoSync::isAlignedBarrier(const CallBase &CB, bool ExecutedAligned) {
   return hasAssumption(CB, KnownAssumptionString("ompx_aligned_barrier"));
 }
 
+bool AANoSync::isBarrier(const CallBase &CB) {
+  switch (CB.getIntrinsicID()) {
+  case Intrinsic::nvvm_barrier:
+  case Intrinsic::nvvm_barrier_n:
+  case Intrinsic::nvvm_barrier_sync:
+  case Intrinsic::nvvm_barrier_sync_cnt:
+  case Intrinsic::nvvm_barrier0:
+  case Intrinsic::nvvm_barrier0_and:
+  case Intrinsic::nvvm_barrier0_or:
+  case Intrinsic::nvvm_barrier0_popc:
+  case Intrinsic::amdgcn_s_barrier:
+  case Intrinsic::amdgcn_wave_barrier:
+  case Intrinsic::amdgcn_sched_barrier:
+  case Intrinsic::amdgcn_sched_group_barrier: 
+  case Intrinsic::amdgcn_ds_gws_barrier: 
+    return true;
+  default:
+    break; 
+  }
+  return false; 
+}
+
 bool AANoSync::isNonRelaxedAtomic(const Instruction *I) {
   if (!I->isAtomic())
     return false;
@@ -8857,12 +8879,17 @@ struct AAMemoryLocationCallSite final : AAMemoryLocationImpl {
     };
     if (!FnAA->checkForAllAccessesToMemoryKind(AccessPred, ALL_LOCATIONS))
       return indicatePessimisticFixpoint();
-    // Check if callsite is a barrier 
-    // write your own isBarrier function 
+    // Check if callsite is a barrier
+    //if(isBarrier(this->IRP->getCallBaseContext())){
     // Use KernelInfoState::ReachingKernelEntries to get a list of kernels
+    // **Issue - KernelInfoState is defined in OpenMPOpt.cpp which is not
+    // included here
+
     // Loop over all kernels and accumulate their memory effects onto a 
     // single effect
     // Assign the barriers effect to that single effect
+
+    //} 
     return Changed ? ChangeStatus::CHANGED : ChangeStatus::UNCHANGED;
   }
 

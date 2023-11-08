@@ -3553,6 +3553,9 @@ struct AANoSync
   /// aligned barriers.
   static bool isAlignedBarrier(const CallBase &CB, bool ExecutedAligned);
 
+  /// Function to check if \p CB is a barrier instruction
+  static bool isBarrier(const CallBase &CB); 
+
   /// Create an abstract attribute view for the position \p IRP.
   static AANoSync &createForPosition(const IRPosition &IRP, Attributor &A);
 
