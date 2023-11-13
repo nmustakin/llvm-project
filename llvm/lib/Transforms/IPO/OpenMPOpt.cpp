@@ -3440,24 +3440,6 @@ struct AAKernelInfoImpl : AAKernelInfo {
            ", NestedPar: " + (NestedParallelism ? "yes" : "no");
   }
 
-  /// Create an abstract attribute biew for the position \p IRP.
-  static AAKernelInfoImpl &createForPosition(const IRPosition &IRP,
-                                             Attributor &A);
-
-  /// See AbstractAttribute::getName()
-  const std::string getName() const override { return "AAKernelInfoImpl"; }
-
-  /// See AbstractAttribute::getIdAddr()
-  const char *getIdAddr() const override { return &ID; }
-
-  /// This function should return true if the type of the \p AA is
-  /// AAKernelInfoImpl
-  static bool classof(const AbstractAttribute *AA) {
-    return (AA->getIdAddr() == &ID);
-  }
-
-  static const char ID;
-
   /// Return the ReachingKernelEntries
   BooleanStateWithPtrSetVector<Function, false> getReachingKernels() override {
     return ReachingKernelEntries;
@@ -3932,10 +3914,10 @@ struct AAKernelInfoFunction : AAKernelInfoImpl {
 
     for (Instruction *GuardedI : SPMDCompatibilityTracker) {
       BasicBlock *BB = GuardedI->getParent();
-      auto *CalleeAA = A.lookupAAFor<AAKernelInfoImpl>(
+      auto *CalleeAA = A.lookupAAFor<AAKernelInfo>(
           IRPosition::function(*GuardedI->getFunction()), nullptr,
           DepClassTy::NONE);
-      assert(CalleeAA != nullptr && "Expected Callee AAKernelInfoImpl");
+      assert(CalleeAA != nullptr && "Expected Callee AAKernelInfo");
       auto &CalleeAAFunction = *cast<AAKernelInfoFunction>(CalleeAA);
       // Continue if instruction is already guarded.
       if (CalleeAAFunction.getGuardedInstructions().contains(GuardedI))
@@ -4537,7 +4519,7 @@ struct AAKernelInfoFunction : AAKernelInfoImpl {
           // we cannot fix the internal spmd-zation state either.
           int SPMD = 0, Generic = 0;
           for (auto *Kernel : ReachingKernelEntries) {
-            auto *CBAA = A.getAAFor<AAKernelInfoImpl>(
+            auto *CBAA = A.getAAFor<AAKernelInfo>(
                 *this, IRPosition::function(*Kernel), DepClassTy::OPTIONAL);
             if (CBAA && CBAA->SPMDCompatibilityTracker.isValidState() &&
                 CBAA->SPMDCompatibilityTracker.isAssumed())
@@ -4558,7 +4540,7 @@ struct AAKernelInfoFunction : AAKernelInfoImpl {
     bool AllSPMDStatesWereFixed = true;
     auto CheckCallInst = [&](Instruction &I) {
       auto &CB = cast<CallBase>(I);
-      auto *CBAA = A.getAAFor<AAKernelInfoImpl>(
+      auto *CBAA = A.getAAFor<AAKernelInfo>(
           *this, IRPosition::callsite_function(CB), DepClassTy::OPTIONAL);
       if (!CBAA)
         return false;
@@ -4607,7 +4589,7 @@ private:
 
       assert(Caller && "Caller is nullptr");
 
-      auto *CAA = A.getOrCreateAAFor<AAKernelInfoImpl>(
+      auto *CAA = A.getOrCreateAAFor<AAKernelInfo>(
           IRPosition::function(*Caller), this, DepClassTy::REQUIRED);
       if (CAA && CAA->ReachingKernelEntries.isValidState()) {
         ReachingKernelEntries ^= CAA->ReachingKernelEntries;
@@ -4639,7 +4621,7 @@ private:
       assert(Caller && "Caller is nullptr");
 
       auto *CAA =
-          A.getOrCreateAAFor<AAKernelInfoImpl>(IRPosition::function(*Caller));
+          A.getOrCreateAAFor<AAKernelInfo>(IRPosition::function(*Caller));
       if (CAA && CAA->ParallelLevels.isValidState()) {
         // Any function that is called by `__kmpc_parallel_51` will not be
         // folded as the parallel level in the function is updated. In order to
@@ -4868,12 +4850,12 @@ struct AAKernelInfoCallSite : AAKernelInfoImpl {
     auto CheckCallee = [&](Function *F, int NumCallees) {
       const auto &It = OMPInfoCache.RuntimeFunctionIDMap.find(F);
 
-      // If F is not a runtime function, propagate the AAKernelInfoImpl of the
+      // If F is not a runtime function, propagate the AAKernelInfo of the
       // callee.
       if (It == OMPInfoCache.RuntimeFunctionIDMap.end()) {
         const IRPosition &FnPos = IRPosition::function(*F);
         auto *FnAA =
-            A.getAAFor<AAKernelInfoImpl>(*this, FnPos, DepClassTy::REQUIRED);
+            A.getAAFor<AAKernelInfo>(*this, FnPos, DepClassTy::REQUIRED);
         if (!FnAA)
           return indicatePessimisticFixpoint();
         if (getState() == FnAA->getState())
@@ -4962,7 +4944,7 @@ struct AAKernelInfoCallSite : AAKernelInfoImpl {
 
     ReachedKnownParallelRegions.insert(&CB);
     /// Check nested parallelism
-    auto *FnAA = A.getAAFor<AAKernelInfoImpl>(
+    auto *FnAA = A.getAAFor<AAKernelInfo>(
         *this, IRPosition::function(*ParallelRegion), DepClassTy::OPTIONAL);
     NestedParallelism |= !FnAA || !FnAA->getState().isValidState() ||
                          !FnAA->ReachedKnownParallelRegions.empty() ||
@@ -5119,7 +5101,7 @@ private:
 
     unsigned AssumedSPMDCount = 0, KnownSPMDCount = 0;
     unsigned AssumedNonSPMDCount = 0, KnownNonSPMDCount = 0;
-    auto *CallerKernelInfoAA = A.getAAFor<AAKernelInfoImpl>(
+    auto *CallerKernelInfoAA = A.getAAFor<AAKernelInfo>(
         *this, IRPosition::function(*getAnchorScope()), DepClassTy::REQUIRED);
 
     if (!CallerKernelInfoAA ||
@@ -5127,7 +5109,7 @@ private:
       return indicatePessimisticFixpoint();
 
     for (Kernel K : CallerKernelInfoAA->ReachingKernelEntries) {
-      auto *AA = A.getAAFor<AAKernelInfoImpl>(*this, IRPosition::function(*K),
+      auto *AA = A.getAAFor<AAKernelInfo>(*this, IRPosition::function(*K),
                                               DepClassTy::REQUIRED);
 
       if (!AA || !AA->isValidState()) {
@@ -5180,7 +5162,7 @@ private:
   ChangeStatus foldParallelLevel(Attributor &A) {
     std::optional<Value *> SimplifiedValueBefore = SimplifiedValue;
 
-    auto *CallerKernelInfoAA = A.getAAFor<AAKernelInfoImpl>(
+    auto *CallerKernelInfoAA = A.getAAFor<AAKernelInfo>(
         *this, IRPosition::function(*getAnchorScope()), DepClassTy::REQUIRED);
 
     if (!CallerKernelInfoAA ||
@@ -5199,7 +5181,7 @@ private:
     unsigned AssumedSPMDCount = 0, KnownSPMDCount = 0;
     unsigned AssumedNonSPMDCount = 0, KnownNonSPMDCount = 0;
     for (Kernel K : CallerKernelInfoAA->ReachingKernelEntries) {
-      auto *AA = A.getAAFor<AAKernelInfoImpl>(*this, IRPosition::function(*K),
+      auto *AA = A.getAAFor<AAKernelInfo>(*this, IRPosition::function(*K),
                                               DepClassTy::REQUIRED);
       if (!AA || !AA->SPMDCompatibilityTracker.isValidState())
         return indicatePessimisticFixpoint();
@@ -5243,7 +5225,7 @@ private:
     int32_t CurrentAttrValue = -1;
     std::optional<Value *> SimplifiedValueBefore = SimplifiedValue;
 
-    auto *CallerKernelInfoAA = A.getAAFor<AAKernelInfoImpl>(
+    auto *CallerKernelInfoAA = A.getAAFor<AAKernelInfo>(
         *this, IRPosition::function(*getAnchorScope()), DepClassTy::REQUIRED);
 
     if (!CallerKernelInfoAA ||
@@ -5300,12 +5282,12 @@ void OpenMPOpt::registerAAs(bool IsModulePass) {
     return;
 
   if (IsModulePass) {
-    // Ensure we create the AAKernelInfoImpl AAs first and without triggering an
+    // Ensure we create the AAKernelInfo AAs first and without triggering an
     // update. This will make sure we register all value simplification
     // callbacks before any other AA has the chance to create an AAValueSimplify
     // or similar.
     auto CreateKernelInfoCB = [&](Use &, Function &Kernel) {
-      A.getOrCreateAAFor<AAKernelInfoImpl>(
+      A.getOrCreateAAFor<AAKernelInfo>(
           IRPosition::function(Kernel), /* QueryingAA */ nullptr,
           DepClassTy::NONE, /* ForceUpdate */ false,
           /* UpdateAfterInit */ false);
@@ -5408,7 +5390,7 @@ void OpenMPOpt::registerAAsForFunction(Attributor &A, const Function &F) {
 }
 
 const char AAICVTracker::ID = 0;
-const char AAKernelInfoImpl::ID = 0;
+const char AAKernelInfo::ID = 0;
 const char AAExecutionDomain::ID = 0;
 const char AAHeapToShared::ID = 0;
 const char AAFoldRuntimeCall::ID = 0;
@@ -5481,9 +5463,9 @@ AAHeapToShared &AAHeapToShared::createForPosition(const IRPosition &IRP,
   return *AA;
 }
 
-AAKernelInfoImpl &AAKernelInfoImpl::createForPosition(const IRPosition &IRP,
+AAKernelInfo &AAKernelInfo::createForPosition(const IRPosition &IRP,
                                                       Attributor &A) {
-  AAKernelInfoImpl *AA = nullptr;
+  AAKernelInfo *AA = nullptr;
   switch (IRP.getPositionKind()) {
   case IRPosition::IRP_INVALID:
   case IRPosition::IRP_FLOAT:
