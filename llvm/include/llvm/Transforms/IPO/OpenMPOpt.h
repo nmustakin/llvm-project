@@ -262,10 +262,9 @@ struct AAKernelInfo : public StateWrapper<KernelInfoState, AbstractAttribute> {
   /// Public getter for ReachingKernelEntries
   virtual BooleanStateWithPtrSetVector<Function, false>
   getReachingKernels() = 0;
-  
+
   /// Create an abstract attribute biew for the position \p IRP.
-  static AAKernelInfo &createForPosition(const IRPosition &IRP,
-                                             Attributor &A);
+  static AAKernelInfo &createForPosition(const IRPosition &IRP, Attributor &A);
 
   /// This function should return true if the type of the \p AA is AAKernelInfo
   static bool classof(const AbstractAttribute *AA) {
@@ -279,7 +278,6 @@ struct AAKernelInfo : public StateWrapper<KernelInfoState, AbstractAttribute> {
   const char *getIdAddr() const override { return &ID; }
 
   static const char ID;
-
 };
 
 } // end namespace llvm

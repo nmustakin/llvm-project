@@ -5110,7 +5110,7 @@ private:
 
     for (Kernel K : CallerKernelInfoAA->ReachingKernelEntries) {
       auto *AA = A.getAAFor<AAKernelInfo>(*this, IRPosition::function(*K),
-                                              DepClassTy::REQUIRED);
+                                          DepClassTy::REQUIRED);
 
       if (!AA || !AA->isValidState()) {
         SimplifiedValue = nullptr;
@@ -5182,7 +5182,7 @@ private:
     unsigned AssumedNonSPMDCount = 0, KnownNonSPMDCount = 0;
     for (Kernel K : CallerKernelInfoAA->ReachingKernelEntries) {
       auto *AA = A.getAAFor<AAKernelInfo>(*this, IRPosition::function(*K),
-                                              DepClassTy::REQUIRED);
+                                          DepClassTy::REQUIRED);
       if (!AA || !AA->SPMDCompatibilityTracker.isValidState())
         return indicatePessimisticFixpoint();
 
@@ -5464,7 +5464,7 @@ AAHeapToShared &AAHeapToShared::createForPosition(const IRPosition &IRP,
 }
 
 AAKernelInfo &AAKernelInfo::createForPosition(const IRPosition &IRP,
-                                                      Attributor &A) {
+                                              Attributor &A) {
   AAKernelInfo *AA = nullptr;
   switch (IRP.getPositionKind()) {
   case IRPosition::IRP_INVALID:
