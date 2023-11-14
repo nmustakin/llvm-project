@@ -195,6 +195,9 @@ namespace KernelInfo {
 //   int32_t MaxThreads;
 //   int32_t MinTeams;
 //   int32_t MaxTeams;
+//   int32_t ReductionDataSize;
+//   int32_t ReductionBufferLength;
+//   uint8_t AccessesArgMemOnly;
 // };
 
 // struct DynamicEnvironmentTy {
@@ -225,6 +228,9 @@ KERNEL_ENVIRONMENT_CONFIGURATION_IDX(MinThreads, 3)
 KERNEL_ENVIRONMENT_CONFIGURATION_IDX(MaxThreads, 4)
 KERNEL_ENVIRONMENT_CONFIGURATION_IDX(MinTeams, 5)
 KERNEL_ENVIRONMENT_CONFIGURATION_IDX(MaxTeams, 6)
+KERNEL_ENVIRONMENT_CONFIGURATION_IDX(ReductionDataSize, 7)
+KERNEL_ENVIRONMENT_CONFIGURATION_IDX(ReductionBufferLength, 8)
+KERNEL_ENVIRONMENT_CONFIGURATION_IDX(AccessesArgMemOnly, 9)
 
 #undef KERNEL_ENVIRONMENT_CONFIGURATION_IDX
 
@@ -253,6 +259,9 @@ KERNEL_ENVIRONMENT_CONFIGURATION_GETTER(MinThreads)
 KERNEL_ENVIRONMENT_CONFIGURATION_GETTER(MaxThreads)
 KERNEL_ENVIRONMENT_CONFIGURATION_GETTER(MinTeams)
 KERNEL_ENVIRONMENT_CONFIGURATION_GETTER(MaxTeams)
+KERNEL_ENVIRONMENT_CONFIGURATION_GETTER(ReductionDataSize)
+KERNEL_ENVIRONMENT_CONFIGURATION_GETTER(ReductionBufferLength)
+KERNEL_ENVIRONMENT_CONFIGURATION_GETTER(AccessesArgMemOnly)
 
 #undef KERNEL_ENVIRONMENT_CONFIGURATION_GETTER
 
@@ -3482,6 +3491,9 @@ struct AAKernelInfoFunction : AAKernelInfoImpl {
   KERNEL_ENVIRONMENT_CONFIGURATION_SETTER(MaxThreads)
   KERNEL_ENVIRONMENT_CONFIGURATION_SETTER(MinTeams)
   KERNEL_ENVIRONMENT_CONFIGURATION_SETTER(MaxTeams)
+  KERNEL_ENVIRONMENT_CONFIGURATION_SETTER(ReductionDataSize)
+  KERNEL_ENVIRONMENT_CONFIGURATION_SETTER(ReductionBufferLength)
+  KERNEL_ENVIRONMENT_CONFIGURATION_SETTER(AccessesArgMemOnly)
 
 #undef KERNEL_ENVIRONMENT_CONFIGURATION_SETTER
 
@@ -4575,6 +4587,20 @@ struct AAKernelInfoFunction : AAKernelInfoImpl {
         !UsedAssumedInformationInCheckCallInst &&
         !UsedAssumedInformationFromReachingKernels && AllSPMDStatesWereFixed)
       SPMDCompatibilityTracker.indicateOptimisticFixpoint();
+
+    // Check if a kernel accesses ArgMem only and set flag
+    const IRPosition &Pos = getIRPosition();
+
+    const auto *MemAA =
+        A.getOrCreateAAFor<AAMemoryLocation>(Pos, this, DepClassTy::OPTIONAL);
+
+    if (KernelEnvC != nullptr) {
+      ConstantInt *AccessesArgMemOnlyC =
+          KernelInfo::getAccessesArgMemOnlyFromKernelEnvironment(KernelEnvC);
+      ConstantInt *AssumedAccessesArgMemOnlyC = ConstantInt::get(
+          AccessesArgMemOnlyC->getType(), MemAA->isAssumedArgMemOnly());
+      setAccessesArgMemOnlyOfKernelEnvironment(AssumedAccessesArgMemOnlyC);
+    }
 
     return StateBefore == getState() ? ChangeStatus::UNCHANGED
                                      : ChangeStatus::CHANGED;

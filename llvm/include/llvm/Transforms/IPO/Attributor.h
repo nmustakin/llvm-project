@@ -1196,7 +1196,8 @@ struct InformationCache {
         TargetTriple(M.getTargetTriple()) {
     if (UseExplorer)
       Explorer = new (Allocator) MustBeExecutedContextExplorer(
-          /* ExploreInterBlock */ true, /* ExploreCFGForward */ true,
+          /* ExploreInterBlock */
+          true, /* ExploreCFGForward */ true,
           /* ExploreCFGBackward */ true,
           /* LIGetter */
           [&](const Function &F) { return AG.getAnalysis<LoopAnalysis>(F); },
@@ -3555,6 +3556,9 @@ struct AANoSync
   /// aligned barriers.
   static bool isAlignedBarrier(const CallBase &CB, bool ExecutedAligned);
 
+  /// Function to check if \p CB is a barrier instruction
+  static bool isBarrier(const CallBase &CB);
+
   /// Create an abstract attribute view for the position \p IRP.
   static AANoSync &createForPosition(const IRPosition &IRP, Attributor &A);
 
@@ -5133,9 +5137,7 @@ struct DenormalFPMathState : public AbstractState {
       return Mode != Other.Mode || ModeF32 != Other.ModeF32;
     }
 
-    bool isValid() const {
-      return Mode.isValid() && ModeF32.isValid();
-    }
+    bool isValid() const { return Mode.isValid() && ModeF32.isValid(); }
 
     static DenormalMode::DenormalModeKind
     unionDenormalKind(DenormalMode::DenormalModeKind Callee,
@@ -5175,9 +5177,7 @@ struct DenormalFPMathState : public AbstractState {
   // state.
   DenormalState getAssumed() const { return Known; }
 
-  bool isValidState() const override {
-    return Known.isValid();
-  }
+  bool isValidState() const override { return Known.isValid(); }
 
   /// Return true if there are no dynamic components to the denormal mode worth
   /// specializing.
@@ -5188,9 +5188,7 @@ struct DenormalFPMathState : public AbstractState {
            Known.ModeF32.Output != DenormalMode::Dynamic;
   }
 
-  bool isAtFixpoint() const override {
-    return IsAtFixedpoint;
-  }
+  bool isAtFixpoint() const override { return IsAtFixedpoint; }
 
   ChangeStatus indicateFixpoint() {
     bool Changed = !IsAtFixedpoint;

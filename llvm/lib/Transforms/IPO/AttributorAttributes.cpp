@@ -451,7 +451,8 @@ struct AAReturnedFromReturnedValues : public BaseType {
   /// See AbstractAttribute::updateImpl(...).
   ChangeStatus updateImpl(Attributor &A) override {
     StateType S(StateType::getBestState(this->getState()));
-    clampReturnedValueStates<AAType, StateType, IRAttributeKind, RecurseForSelectAndPHI>(
+    clampReturnedValueStates<AAType, StateType, IRAttributeKind,
+                             RecurseForSelectAndPHI>(
         A, *this, S,
         PropagateCallBaseContext ? this->getCallBaseContext() : nullptr);
     // TODO: If we know we visited all returned values, thus no are assumed
@@ -2155,6 +2156,28 @@ bool AANoSync::isAlignedBarrier(const CallBase &CB, bool ExecutedAligned) {
     break;
   }
   return hasAssumption(CB, KnownAssumptionString("ompx_aligned_barrier"));
+}
+
+bool AANoSync::isBarrier(const CallBase &CB) {
+  switch (CB.getIntrinsicID()) {
+  case Intrinsic::nvvm_barrier:
+  case Intrinsic::nvvm_barrier_n:
+  case Intrinsic::nvvm_barrier_sync:
+  case Intrinsic::nvvm_barrier_sync_cnt:
+  case Intrinsic::nvvm_barrier0:
+  case Intrinsic::nvvm_barrier0_and:
+  case Intrinsic::nvvm_barrier0_or:
+  case Intrinsic::nvvm_barrier0_popc:
+  case Intrinsic::amdgcn_s_barrier:
+  case Intrinsic::amdgcn_wave_barrier:
+  case Intrinsic::amdgcn_sched_barrier:
+  case Intrinsic::amdgcn_sched_group_barrier:
+  case Intrinsic::amdgcn_ds_gws_barrier:
+    return true;
+  default:
+    break;
+  }
+  return false;
 }
 
 bool AANoSync::isNonRelaxedAtomic(const Instruction *I) {
@@ -6993,10 +7016,9 @@ ChangeStatus AAHeapToStackFunction::updateImpl(Attributor &A) {
     if (AI.LibraryFunctionId != LibFunc___kmpc_alloc_shared) {
       Instruction *CtxI = isa<InvokeInst>(AI.CB) ? AI.CB : AI.CB->getNextNode();
       if (!Explorer || !Explorer->findInContextOf(UniqueFree, CtxI)) {
-        LLVM_DEBUG(
-            dbgs()
-            << "[H2S] unique free call might not be executed with the allocation "
-            << *UniqueFree << "\n");
+        LLVM_DEBUG(dbgs() << "[H2S] unique free call might not be executed "
+                             "with the allocation "
+                          << *UniqueFree << "\n");
         return false;
       }
     }
@@ -8863,6 +8885,17 @@ struct AAMemoryLocationCallSite final : AAMemoryLocationImpl {
     };
     if (!FnAA->checkForAllAccessesToMemoryKind(AccessPred, ALL_LOCATIONS))
       return indicatePessimisticFixpoint();
+    // Check if callsite is a barrier
+    // if(isBarrier(this->IRP->getCallBaseContext())){
+    // Use KernelInfoState::ReachingKernelEntries to get a list of kernels
+    // **Issue - KernelInfoState is defined in OpenMPOpt.cpp which is not
+    // included here
+
+    // Loop over all kernels and accumulate their memory effects onto a
+    // single effect
+    // Assign the barriers effect to that single effect
+
+    //}
     return Changed ? ChangeStatus::CHANGED : ChangeStatus::UNCHANGED;
   }
 
@@ -10460,11 +10493,12 @@ struct AANoFPClassFloating : public AANoFPClassImpl {
 
 struct AANoFPClassReturned final
     : AAReturnedFromReturnedValues<AANoFPClass, AANoFPClassImpl,
-                                   AANoFPClassImpl::StateType, false, Attribute::None, false> {
+                                   AANoFPClassImpl::StateType, false,
+                                   Attribute::None, false> {
   AANoFPClassReturned(const IRPosition &IRP, Attributor &A)
       : AAReturnedFromReturnedValues<AANoFPClass, AANoFPClassImpl,
-                                     AANoFPClassImpl::StateType, false, Attribute::None, false>(
-            IRP, A) {}
+                                     AANoFPClassImpl::StateType, false,
+                                     Attribute::None, false>(IRP, A) {}
 
   /// See AbstractAttribute::trackStatistics()
   void trackStatistics() const override {

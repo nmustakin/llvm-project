@@ -3583,16 +3583,16 @@ static int32_t computeHeuristicUnrollFactor(CanonicalLoopInfo *CLI) {
   Loop *L = LI.getLoopFor(CLI->getHeader());
   assert(L && "Expecting CanonicalLoopInfo to be recognized as a loop");
 
-  TargetTransformInfo::UnrollingPreferences UP =
-      gatherUnrollingPreferences(L, SE, TTI,
-                                 /*BlockFrequencyInfo=*/nullptr,
-                                 /*ProfileSummaryInfo=*/nullptr, ORE, static_cast<int>(OptLevel),
-                                 /*UserThreshold=*/std::nullopt,
-                                 /*UserCount=*/std::nullopt,
-                                 /*UserAllowPartial=*/true,
-                                 /*UserAllowRuntime=*/true,
-                                 /*UserUpperBound=*/std::nullopt,
-                                 /*UserFullUnrollMaxCount=*/std::nullopt);
+  TargetTransformInfo::UnrollingPreferences UP = gatherUnrollingPreferences(
+      L, SE, TTI,
+      /*BlockFrequencyInfo=*/nullptr,
+      /*ProfileSummaryInfo=*/nullptr, ORE, static_cast<int>(OptLevel),
+      /*UserThreshold=*/std::nullopt,
+      /*UserCount=*/std::nullopt,
+      /*UserAllowPartial=*/true,
+      /*UserAllowRuntime=*/true,
+      /*UserUpperBound=*/std::nullopt,
+      /*UserFullUnrollMaxCount=*/std::nullopt);
 
   UP.Force = true;
 
@@ -4231,6 +4231,7 @@ OpenMPIRBuilder::createTargetInit(const LocationDescription &Loc, bool IsSPMD,
       Int8, IsSPMD ? OMP_TGT_EXEC_MODE_SPMD : OMP_TGT_EXEC_MODE_GENERIC);
   Constant *UseGenericStateMachineVal = ConstantInt::getSigned(Int8, !IsSPMD);
   Constant *MayUseNestedParallelismVal = ConstantInt::getSigned(Int8, true);
+  Constant *AccessesArgMemOnlyVal = ConstantInt::getSigned(Int8, false);
   Constant *DebugIndentionLevelVal = ConstantInt::getSigned(Int16, 0);
 
   Function *Kernel = Builder.GetInsertBlock()->getParent();
@@ -4292,6 +4293,7 @@ OpenMPIRBuilder::createTargetInit(const LocationDescription &Loc, bool IsSPMD,
                                     MaxTeams,
                                     ReductionDataSize,
                                     ReductionBufferLength,
+                                    AccessesArgMemOnlyVal,
                                 });
   Constant *KernelEnvironmentInitializer = ConstantStruct::get(
       KernelEnvironment, {

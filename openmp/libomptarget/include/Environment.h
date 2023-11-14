@@ -89,6 +89,7 @@ struct ConfigurationEnvironmentTy {
   int32_t ReductionDataSize = 0;
   int32_t ReductionBufferLength = 0;
   //}
+  uint8_t AccessesArgMemOnly = 0;
 };
 
 // NOTE: Please don't change the order of those members as their indices are
