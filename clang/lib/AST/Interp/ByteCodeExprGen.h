@@ -68,7 +68,6 @@ public:
   bool VisitCXXDefaultArgExpr(const CXXDefaultArgExpr *E);
   bool VisitCallExpr(const CallExpr *E);
   bool VisitBuiltinCallExpr(const CallExpr *E);
-  bool VisitCXXMemberCallExpr(const CXXMemberCallExpr *E);
   bool VisitCXXDefaultInitExpr(const CXXDefaultInitExpr *E);
   bool VisitCXXBoolLiteralExpr(const CXXBoolLiteralExpr *E);
   bool VisitCXXNullPtrLiteralExpr(const CXXNullPtrLiteralExpr *E);
@@ -107,6 +106,7 @@ public:
   bool VisitSourceLocExpr(const SourceLocExpr *E);
   bool VisitOffsetOfExpr(const OffsetOfExpr *E);
   bool VisitCXXScalarValueInitExpr(const CXXScalarValueInitExpr *E);
+  bool VisitSizeOfPackExpr(const SizeOfPackExpr *E);
 
 protected:
   bool visitExpr(const Expr *E) override;
