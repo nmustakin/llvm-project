@@ -4977,6 +4977,11 @@ struct AAKernelInfoCallSite : AAKernelInfoImpl {
                          !FnAA->ReachedKnownParallelRegions.isValidState() ||
                          !FnAA->ReachedUnknownParallelRegions.isValidState() ||
                          !FnAA->ReachedUnknownParallelRegions.empty();
+    
+    LLVM_DEBUG(dbgs() << "[AAKernelInfoCallsite (handleParallel51)]: " 
+               << FnAA->getState().isValidState() << FnAA->ReachingKernelEntries.size()
+               << "\n");
+    this->ReachingKernelEntries ^= FnAA->ReachingKernelEntries;
     return true;
   }
 };

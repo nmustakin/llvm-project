@@ -71,6 +71,7 @@
 #include "llvm/Transforms/Utils/CallPromotionUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
+#include "llvm/Transforms/IPO/OpenMPOpt.h"
 #include <cassert>
 #include <numeric>
 #include <optional>
@@ -8722,6 +8723,32 @@ AAMemoryLocationImpl::categorizeAccessedLocations(Attributor &A, Instruction &I,
   AccessedLocs.intersectAssumedBits(NO_LOCATIONS);
 
   if (auto *CB = dyn_cast<CallBase>(&I)) {
+    // Check if callsite is a barrier.
+    if(CB == nullptr) 
+      LLVM_DEBUG(dbgs() << "[AAMemoryLocationFunction] Callbase null\n");      
+    if(CB != nullptr) {
+      LLVM_DEBUG(dbgs() << "[AAMemoryLocationFunction] Callbase is not null\n");
+      
+      if(AANoSync::isBarrier(*CB)){
+        LLVM_DEBUG(dbgs() << "[AAMemoryLocationFunction] isBarrier true\n");
+        auto *CAA = A.getOrCreateAAFor<AAKernelInfo>(IRPosition::callsite_function(*CB), 
+                                                     *this, DepClassTy::REQUIRED);
+        AAMemoryLocation::MemoryLocationsKind BarrierEffects = 0; 
+        LLVM_DEBUG(dbgs() << "[AAMemoryLocationFunction] Number of reaching kernels: "
+                          << CAA->ReachingKernelEntries.size() << "\n");
+        LLVM_DEBUG(dbgs() << "[AAMemoryLocationFunction] CAA is valid : "
+                          << CAA->getState().isValidState() << "\n");
+        for (auto *Kernel : CAA->ReachingKernelEntries){
+          const auto *MemAA = A.getAAFor<AAMemoryLocation>(
+                *this, IRPosition::function(*Kernel), DepClassTy::OPTIONAL);
+          LLVM_DEBUG(dbgs() << "[AAMemoryLocationFunction] Memory Effect for kernel: "
+                          << MemAA->getAssumed() << "\n");
+          BarrierEffects ^= MemAA->getAssumed(); 
+        }
+        LLVM_DEBUG(dbgs() << "[AAMemoryLocationFunction] Memory Effect for Barrier: "
+                          << BarrierEffects << "\n");
+      }
+    }
 
     // First check if we assume any memory is access is visible.
     const auto *CBMemLocationAA = A.getAAFor<AAMemoryLocation>(
@@ -8842,6 +8869,9 @@ struct AAMemoryLocationFunction final : public AAMemoryLocationImpl {
                                             UsedAssumedInformation))
       return indicatePessimisticFixpoint();
 
+
+    LLVM_DEBUG(dbgs() << "[AAMemoryLocationFunction] has been called\n");
+
     Changed |= AssumedState != getAssumed();
     return Changed ? ChangeStatus::CHANGED : ChangeStatus::UNCHANGED;
   }
@@ -8885,17 +8915,7 @@ struct AAMemoryLocationCallSite final : AAMemoryLocationImpl {
     };
     if (!FnAA->checkForAllAccessesToMemoryKind(AccessPred, ALL_LOCATIONS))
       return indicatePessimisticFixpoint();
-    // Check if callsite is a barrier
-    // if(isBarrier(this->IRP->getCallBaseContext())){
-    // Use KernelInfoState::ReachingKernelEntries to get a list of kernels
-    // **Issue - KernelInfoState is defined in OpenMPOpt.cpp which is not
-    // included here
-
-    // Loop over all kernels and accumulate their memory effects onto a
-    // single effect
-    // Assign the barriers effect to that single effect
-
-    //}
+    
     return Changed ? ChangeStatus::CHANGED : ChangeStatus::UNCHANGED;
   }
 
