@@ -3541,8 +3541,13 @@ struct AAKernelInfoFunction : AAKernelInfoImpl {
     if (!KernelInitCB || !KernelDeinitCB)
       return;
 
+    LLVM_DEBUG(dbgs() << "[AAKernelInfoFunction]: Before " 
+             << ReachingKernelEntries.size() << "\n");
     // Add itself to the reaching kernel and set IsKernelEntry.
     ReachingKernelEntries.insert(Fn);
+    LLVM_DEBUG(dbgs() << "[AAKernelInfoFunction]: After " 
+               << ReachingKernelEntries.size()
+               << "\n");
     IsKernelEntry = true;
 
     KernelEnvC =
@@ -4533,6 +4538,9 @@ struct AAKernelInfoFunction : AAKernelInfoImpl {
           for (auto *Kernel : ReachingKernelEntries) {
             auto *CBAA = A.getAAFor<AAKernelInfo>(
                 *this, IRPosition::function(*Kernel), DepClassTy::OPTIONAL);
+            LLVM_DEBUG(dbgs() << "[AAKernelInfo]: " 
+               << CBAA->getState().isValidState() << "\t"
+               << CBAA->ReachingKernelEntries.size() << "\n");
             if (CBAA && CBAA->SPMDCompatibilityTracker.isValidState() &&
                 CBAA->SPMDCompatibilityTracker.isAssumed())
               ++SPMD;
@@ -4556,6 +4564,9 @@ struct AAKernelInfoFunction : AAKernelInfoImpl {
           *this, IRPosition::callsite_function(CB), DepClassTy::OPTIONAL);
       if (!CBAA)
         return false;
+      LLVM_DEBUG(dbgs() << "[AAKernelInfo]: " 
+             << CBAA->getState().isValidState() << "\t"
+             << CBAA->ReachingKernelEntries.size() << "\n");
       getState() ^= CBAA->getState();
       AllSPMDStatesWereFixed &= CBAA->SPMDCompatibilityTracker.isAtFixpoint();
       AllParallelRegionStatesWereFixed &=
@@ -4617,8 +4628,13 @@ private:
 
       auto *CAA = A.getOrCreateAAFor<AAKernelInfo>(
           IRPosition::function(*Caller), this, DepClassTy::REQUIRED);
+      LLVM_DEBUG(dbgs() << "[AAKernelInfo]: " 
+             << CAA->getState().isValidState() << "\t"
+             << CAA->ReachingKernelEntries.size() << "\n");
       if (CAA && CAA->ReachingKernelEntries.isValidState()) {
         ReachingKernelEntries ^= CAA->ReachingKernelEntries;
+        LLVM_DEBUG(dbgs() << "[updateReachingKernelEntries]: " 
+               << ReachingKernelEntries.size() << "\n");
         return true;
       }
 
@@ -4648,6 +4664,9 @@ private:
 
       auto *CAA =
           A.getOrCreateAAFor<AAKernelInfo>(IRPosition::function(*Caller));
+      LLVM_DEBUG(dbgs() << "[AAKernelInfo]: " 
+             << CAA->getState().isValidState() << "\t"
+             << CAA->ReachingKernelEntries.size() << "\n");
       if (CAA && CAA->ParallelLevels.isValidState()) {
         // Any function that is called by `__kmpc_parallel_51` will not be
         // folded as the parallel level in the function is updated. In order to
@@ -4873,6 +4892,9 @@ struct AAKernelInfoCallSite : AAKernelInfoImpl {
     auto &OMPInfoCache = static_cast<OMPInformationCache &>(A.getInfoCache());
     KernelInfoState StateBefore = getState();
 
+    LLVM_DEBUG(dbgs() << "[AAKernelInfoCallsite] StateBefore: " 
+               << StateBefore.isValidState() << "\t" << StateBefore.ReachingKernelEntries.size()
+               << "\n");
     auto CheckCallee = [&](Function *F, int NumCallees) {
       const auto &It = OMPInfoCache.RuntimeFunctionIDMap.find(F);
 
@@ -4884,6 +4906,9 @@ struct AAKernelInfoCallSite : AAKernelInfoImpl {
             A.getAAFor<AAKernelInfo>(*this, FnPos, DepClassTy::REQUIRED);
         if (!FnAA)
           return indicatePessimisticFixpoint();
+        LLVM_DEBUG(dbgs() << "[AAKernelInfo]: " 
+             << FnAA->getState().isValidState() << "\t"
+             << FnAA->ReachingKernelEntries.size() << "\n");
         if (getState() == FnAA->getState())
           return ChangeStatus::UNCHANGED;
         getState() = FnAA->getState();
@@ -4894,6 +4919,9 @@ struct AAKernelInfoCallSite : AAKernelInfoImpl {
 
       CallBase &CB = cast<CallBase>(getAssociatedValue());
       if (It->getSecond() == OMPRTL___kmpc_parallel_51) {
+        LLVM_DEBUG(dbgs() << "[AAKernelInfoCallsite]: " 
+               << this->getState().isValidState() << this->ReachingKernelEntries.size()
+               << "\n");
         if (!handleParallel51(A, CB))
           return indicatePessimisticFixpoint();
         return StateBefore == getState() ? ChangeStatus::UNCHANGED
@@ -4978,10 +5006,11 @@ struct AAKernelInfoCallSite : AAKernelInfoImpl {
                          !FnAA->ReachedUnknownParallelRegions.isValidState() ||
                          !FnAA->ReachedUnknownParallelRegions.empty();
     
-    LLVM_DEBUG(dbgs() << "[AAKernelInfoCallsite (handleParallel51)]: " 
-               << FnAA->getState().isValidState() << FnAA->ReachingKernelEntries.size()
-               << "\n");
-    this->ReachingKernelEntries ^= FnAA->ReachingKernelEntries;
+    LLVM_DEBUG(dbgs() << "[AAKernelInfoCallsite (handleParallel51)]: isValid " 
+               << this->getState().isValidState() << " Size: "
+               << this->ReachingKernelEntries.size() << "\n");
+    //this->ReachingKernelEntries ^= FnAA->ReachingKernelEntries;
+    //FnAA->ReachingKernelEntries ^= this->ReachingKernelEntries; 
     return true;
   }
 };
