@@ -1,0 +1,12 @@
+# Python 3.10 packages of the tuner and scripts. rr_current.sif provides all but the last
+# group; the original runs added those through FASTRR_PYLIB (pip install --target DIR).
+numpy==1.23.4
+pandas==1.5.1
+scipy==1.11.1
+scikit-learn==1.3.0
+matplotlib==3.6.2
+pynvml==11.5.0
+bayesian-optimization==1.4.2
+# Not in the container:
+xgboost-cpu==2.1.4
+optuna==3.6.1

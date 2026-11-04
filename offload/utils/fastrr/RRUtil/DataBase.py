@@ -1,0 +1,387 @@
+import json
+import os
+import shutil
+from pathlib import Path
+import tempfile
+import time
+import warnings
+import numpy as np
+
+class DB:
+    def __init__(self, fn, defaultKey):
+        # Get full path of database
+        self.fn = str(Path(fn).resolve())
+        self.Data = dict()
+        self.MetaData = dict()
+        self.DefaultExecTime = None
+        self.DefaultExecEnergy = None
+        self.DefaultLoads = None
+        self.DefaultStores = None
+        self.Default = defaultKey
+
+        Data = { 'MetaData' : {} , 'Stats' : {} }
+        if Path(self.fn).exists():
+            #print("Json file: ", self.fn)
+            try:
+                with open(self.fn, 'r') as fd:
+                    Data = json.load(fd)
+            except json.JSONDecodeError as error:
+                corrupt_path = Path(
+                    f'{self.fn}.corrupt-{time.time_ns()}')
+                Path(self.fn).replace(corrupt_path)
+                warnings.warn(
+                    f'Optimization database {self.fn} is not valid JSON '
+                    f'({error}). It was moved to {corrupt_path}; starting a '
+                    'new database.', RuntimeWarning)
+
+        self.Data = Data['Stats']
+        self.MetaData = Data['MetaData']
+        #If some execution uses some previous DB format
+        #count is not recorded. Add in the DB, to match the
+        #new format
+
+        self.Baseline()
+
+    def Update(self):
+        Data = { 'MetaData' : self.MetaData , 'Stats' : self.Data }
+        destination = Path(self.fn)
+        temporary_name = None
+        try:
+            # Write beside the database so os.replace remains atomic even when
+            # the execution directory is on a different filesystem.
+            with tempfile.NamedTemporaryFile(
+                    mode='w', dir=destination.parent,
+                    prefix=f'.{destination.name}.', suffix='.tmp',
+                    delete=False) as fd:
+                temporary_name = fd.name
+                json.dump(Data, fd, indent=6)
+                fd.flush()
+                os.fsync(fd.fileno())
+            os.replace(temporary_name, destination)
+        finally:
+            if temporary_name is not None:
+                Path(temporary_name).unlink(missing_ok=True)
+
+    def getTotalSize(self):
+        if not self.MetaData:
+            return -1
+        return self.MetaData['totalExperiments']
+
+    def setMetadata(self, mData):
+        measurement_schema = self.MetaData.get('measurementSchema')
+        self.MetaData = mData
+        if measurement_schema is not None:
+            self.MetaData['measurementSchema'] = measurement_schema
+        self.Update()
+
+    def setMeasurementSchema(self, schema):
+        """Discard samples produced by an incompatible measurement method."""
+        previous_schema = self.MetaData.get('measurementSchema')
+        if self.Data and previous_schema != schema:
+            # Keep the old samples on disk; only the in-use database is reset.
+            backup = Path(f'{self.fn}.{previous_schema}.bak')
+            if Path(self.fn).exists() and not backup.exists():
+                shutil.copy2(self.fn, backup)
+            warnings.warn(
+                f'Optimization database {self.fn} uses measurement schema '
+                f'{previous_schema!r}; discarding its samples before using '
+                f'{schema!r} (previous file kept at {backup}).', RuntimeWarning)
+            self.Data = {}
+            self.DefaultExecTime = None
+            self.DefaultExecEnergy = None
+            self.DefaultLoads = None
+            self.DefaultStores = None
+
+        self.MetaData['measurementSchema'] = schema
+        self.Update()
+
+    def __len__(self):
+        count = 0
+        for k, v in self.Data.items():
+            count += v['count']
+        return count
+
+    def getBaseline(self):
+        if self.Default in self.Data:
+            return self.Duration(self.Default)
+
+    def getBaselineEnergy(self):
+        if self.Default in self.Data:
+            return self.Energy(self.Default)
+
+    def Baseline(self):
+        if self.Default in self.Data:
+            self.DefaultExecTime = self.Duration(self.Default)
+
+    def BaselineEnergy(self):
+        if self.Default in self.Data:
+            self.DefaultExecEnergy = self.Energy(self.Default)
+    
+    def BaselineLoads(self):
+        if self.Default in self.Data:
+            self.DefaultLoads = self.GLoads(self.Default)
+    
+    def BaselineStores(self):
+        if self.Default in self.Data:
+            self.DefaultStores = self.GStores(self.Default)
+    
+    def __contains__(self, key):
+        return key in self.Data
+
+    def Duration(self, key):
+        if key not in self.Data:
+            raise RuntimeError(f"Key {key} not in Data, cannot compute speedup")
+
+        #We ground performance gain
+        if not self.Data[key]['valid']:
+            return 1E12
+
+        #print("-----------IN DURATION----------\n", self.Data[key]['dynamic'])
+        # Median: replay timings have heavy right tails (see
+        # experiment-archives/optimizer-study-2026-10-09).
+        if 'duration' in self.Data[key] and self.Data[key]['duration']:
+            return np.median(np.array(self.Data[key]['duration']))
+
+        duration = np.median(np.array([ v[-1] for v in self.Data[key]['dynamic']]))
+        return duration
+
+    def Energy(self, key):
+        if key not in self.Data:
+            raise RuntimeError(f"Key {key} not in Data, cannot compute Energy")
+
+        #We ground performance gain
+        if not self.Data[key]['valid']:
+            return 1E12
+
+        #print("------IN ENERGY------", self.Data[key]['energy'])
+        #energy = np.array([ v[-1] for v in self.Data[key]['energy']]).mean()
+        energy = np.array(self.Data[key]['energy'], dtype=float)
+        energy = energy[~np.isnan(energy)]
+        if energy.size == 0:
+            return float('nan')
+        return np.median(energy)
+
+    def GLoads(self, key):
+        if key not in self.Data:
+            raise RuntimeError(f"Key {key} not in Data, cannot compute GLoads")
+
+        #We ground performance gain
+        if not self.Data[key]['valid']:
+            return 1E12
+
+        #print("------IN GLOADS------", self.Data[key]['energy'])
+        #energy = np.array([ v[-1] for v in self.Data[key]['energy']]).mean()
+        gLoads = np.array(self.Data[key]['gloads']).mean()
+        return gLoads
+    
+    def GStores(self, key):
+        if key not in self.Data:
+            raise RuntimeError(f"Key {key} not in Data, cannot compute GStores")
+
+        #We ground performance gain
+        if not self.Data[key]['valid']:
+            return 1E12
+
+        #print("------IN GLOADS------", self.Data[key]['energy'])
+        #energy = np.array([ v[-1] for v in self.Data[key]['energy']]).mean()
+        gStores = np.array(self.Data[key]['gstores']).mean()
+        return gStores
+    
+    def Speedup(self, key):
+        if isinstance(self.DefaultExecTime, type(None)):
+            self.Baseline()
+
+        if isinstance(self.DefaultExecTime, type(None)):
+            raise RuntimeError(f"'Baseline not in Data, cannot compute speedup")
+
+        if key not in self.Data:
+            raise RuntimeError(f"Key {key} not in Data, cannot compute speedup")
+
+        #We ground performance gain
+        if not self.Data[key]['valid']:
+            return 0.01
+
+        duration = self.Duration(key)
+        speedup= self.DefaultExecTime / duration
+        return speedup
+
+    def EnergyImprov(self, key):
+        if isinstance(self.DefaultExecEnergy, type(None)):
+            self.BaselineEnergy()
+
+        if isinstance(self.DefaultExecEnergy, type(None)):
+            raise RuntimeError(f"'Baseline not in Data, cannot compute EnergyImprov")
+
+        if key not in self.Data:
+            raise RuntimeError(f"Key {key} not in Data, cannot compute EnergyImprov")
+
+        #We ground performance gain
+        if not self.Data[key]['valid']:
+            return 0.01
+
+        energy = self.Energy(key)
+        improv = self.DefaultExecEnergy / energy
+        return improv
+
+    def LoadRatio(self, key):
+        if isinstance(self.DefaultLoads, type(None)):
+            self.BaselineLoads()
+
+        if isinstance(self.DefaultLoads, type(None)):
+            raise RuntimeError(f"'Baseline not in Data, cannot compute LoadRatio")
+
+        if key not in self.Data:
+            raise RuntimeError(f"Key {key} not in Data, cannot compute LoadRatio")
+
+        #We ground performance gain
+        if not self.Data[key]['valid']:
+            return 0.01
+
+        gloads = self.GLoads(key)
+        if gloads <= 0:
+            return 0.01
+        ld_ratio = self.DefaultLoads / gloads
+        return ld_ratio
+
+    def StoreRatio(self, key):
+        if isinstance(self.DefaultStores, type(None)):
+            self.BaselineStores()
+
+        if isinstance(self.DefaultStores, type(None)):
+            raise RuntimeError(f"'Baseline not in Data, cannot compute StoreRatio")
+
+        if key not in self.Data:
+            raise RuntimeError(f"Key {key} not in Data, cannot compute StoreRatio")
+
+        #We ground performance gain
+        if not self.Data[key]['valid']:
+            return 0.01
+
+        gstores = self.GStores(key)
+        if gstores <= 0:
+            return 0.01
+        st_ratio = self.DefaultStores / gstores
+        return st_ratio
+
+    def GetSpeedUps(self):
+        X = list()
+        Y = list()
+        configs = list()
+        for key in self.Data.keys():
+            if key == self.Default:
+                continue
+            x = dict([v.split('=') for v in key.split('-')])
+            for k,v in x.items():
+                if v == 'None':
+                    x[k] = -1
+                else:
+                    x[k] = int(v)
+
+            y = self.Speedup(key)
+            for i in range(0, self.Data[key]['count']):
+                X.append(x)
+                Y.append(y)
+            configs.append(key)
+        return configs, X, Y
+
+    def GetEnergyImprovs(self):
+        X = list()
+        Y = list()
+        configs = list()
+        for key in self.Data.keys():
+            if key == self.Default:
+                continue
+            x = dict([v.split('=') for v in key.split('-')])
+            for k,v in x.items():
+                if v == 'None':
+                    x[k] = -1
+                else:
+                    x[k] = int(v)
+
+            y = self.EnergyImprov(key)
+            for i in range(0, self.Data[key]['count']):
+                X.append(x)
+                Y.append(y)
+            configs.append(key)
+        return configs, X, Y
+
+    def GetExplorationStats(self):
+        """Return one summary row for every configuration in the database."""
+        rows = []
+        for key, values in self.Data.items():
+            rows.append({
+                'Configuration': key,
+                'Baseline': key == self.Default,
+                'Valid': values['valid'],
+                'Samples': values['count'],
+                'Duration': self.Duration(key),
+                'Energy': self.Energy(key),
+                'GLoads': self.GLoads(key),
+                'GStores': self.GStores(key),
+                'Speedup': self.Speedup(key),
+                'EnergyImprovement': self.EnergyImprov(key),
+                'LoadRatio': self.LoadRatio(key),
+                'StoreRatio': self.StoreRatio(key),
+            })
+        return rows
+
+    @staticmethod
+    def _flatten_metric(values):
+        flat = []
+        for value in values:
+            if isinstance(value, list):
+                flat.extend(value)
+            else:
+                flat.append(value)
+        return [0.0 if value is None else value for value in flat]
+
+    def SetMetrics(self, key, metrics):
+        """Attach the profiler metrics measured for a configuration."""
+        if key in self.Data and metrics:
+            self.Data[key]['metrics'] = dict(metrics)
+            self.Update()
+
+    def CopyEntry(self, key, other):
+        """Copy one configuration's measurements from another DB."""
+        import copy
+        self.Data[key] = copy.deepcopy(other.Data[key])
+        self.Data[key]['count'] = 1
+        self.Update()
+
+    def AddSamples(self, key, duration, energy):
+        """Append extra timing/energy samples to an existing valid entry."""
+        if key not in self.Data or not self.Data[key]['valid']:
+            return
+        self.Data[key]['duration'] += self._flatten_metric(duration)
+        self.Data[key]['energy'] += self._flatten_metric(energy)
+        self.Data[key].setdefault('resampled', 0)
+        self.Data[key]['resampled'] += 1
+        if key == self.Default:
+            self.DefaultExecTime = None
+            self.DefaultExecEnergy = None
+        self.Update()
+
+    # Add key in database, if key exists increase counter
+    # and ignore parameters
+    def Add(self, key, static, dynamic, duration, energy, gloads, gstores, Valid):
+        if key not  in self.Data:
+            self.Data[key] = dict()
+            self.Data[key]['static'] = list()
+            self.Data[key]['dynamic'] = list()
+            self.Data[key]['duration'] = list()
+            self.Data[key]['energy'] = list()
+            self.Data[key]['gloads'] = list()
+            self.Data[key]['gstores'] = list()
+            self.Data[key]['count'] = 1
+            self.Data[key]['valid'] = Valid
+            if Valid:
+              self.Data[key]['static'] += static
+              self.Data[key]['dynamic'] += dynamic
+              self.Data[key]['duration'] += self._flatten_metric(duration)
+              self.Data[key]['energy'] += self._flatten_metric(energy)
+              self.Data[key]['gloads'] += self._flatten_metric(gloads)
+              self.Data[key]['gstores'] += self._flatten_metric(gstores)
+        else:
+            self.Data[key]['count'] += 1
+
+        self.Update()
