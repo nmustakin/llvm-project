@@ -10,7 +10,9 @@ that talk to the record/replay tooling of the LLVM 16 fork:
 - UpstreamNVIDIA.deviceCompile builds a launch-bound binary from the recorded
   IR: the kernel is extracted once (prepare_kernel_ir), its nvvm.maxntid and
   nvvm.minctasm attributes are set, and llc and ptxas compile it into
-  <stem>.image, which the replay tool loads.
+  <stem>.image, which the replay tool loads. UpstreamAMDGPU does the same for
+  AMD GPUs (FASTRR_TARGET=amdgpu) with amdgpu-flat-work-group-size and
+  amdgpu-waves-per-eu, llc and ld.lld.
 - UpstreamKernel times configurations with the replay tool's --batch mode and
   the paper's protocol: a warm-up of Kernel.TimingWarmupMs before the first
   configuration of a process and Kernel.BatchRewarmMs before each later one,
@@ -21,7 +23,10 @@ that talk to the record/replay tooling of the LLVM 16 fork:
   NVML energy window, so metrics are skipped and energy is NaN.
 
 The LLVM build is RR_UPSTREAM_BUILD (bin/, lib/ and the libomp directory), and
-RR_UPSTREAM_REPLAY_FLAGS adds flags to every replay.
+RR_UPSTREAM_REPLAY_FLAGS adds flags to every replay. FASTRR_TARGET selects the
+GPU vendor (nvptx, the default, or amdgpu); on AMD, FASTRR_ROCM is the ROCm
+installation (6.0 or later: the AMDGPU plugin maps the recording at its
+address with hsa_amd_vmem_*) and FASTRR_AMD_ARCH the gfx target.
 """
 import json
 import os
@@ -33,8 +38,20 @@ from RRUtil import Device
 from RRUtil.Benchmark import Kernel
 
 BUILD = os.environ.get('RR_UPSTREAM_BUILD', '/data2/nmn/llvm/llvm-project-taco/build')
+TARGET = os.environ.get('FASTRR_TARGET', 'nvptx')
+if TARGET not in ('nvptx', 'amdgpu'):
+    raise SystemExit(f'FASTRR_TARGET must be nvptx or amdgpu, not {TARGET}')
 CUDA = os.environ.get('CUDA_HOME', '/usr/local/cuda')
-ARCH = 'sm_75'
+ROCM = os.environ.get('FASTRR_ROCM', os.environ.get('ROCM_PATH', '/opt/rocm'))
+ARCH = 'sm_75' if TARGET == 'nvptx' else os.environ.get('FASTRR_AMD_ARCH', 'gfx906')
+if TARGET == 'amdgpu':
+    # Device.AMDGPU queries the agents with $ROCM_PATH/bin/rocminfo.
+    os.environ['ROCM_PATH'] = ROCM
+# Offload flags of the applications: device bitcode embedded for the recordings.
+_TRIPLE = {'nvptx': 'nvptx64', 'amdgpu': 'amdgcn-amd-amdhsa'}[TARGET]
+OFFLOAD_FLAGS = (f'-fopenmp -fopenmp-targets={_TRIPLE} -Xopenmp-target={_TRIPLE} '
+                 f'-march={ARCH} -fopenmp-offload-mandatory -foffload-lto '
+                 '-Wl,--embed-bitcode')
 # Extra flags of every replay, e.g. --relocate with the space-saving changes.
 REPLAY_FLAGS = os.environ.get('RR_UPSTREAM_REPLAY_FLAGS', '').split()
 # Recording files a work directory links to (.pointers: relocatable recordings).
@@ -46,13 +63,19 @@ def tool(name):
     return f'{BUILD}/bin/{name}'
 
 
-def environment(base=None):
-    """Environment of the upstream LLVM build: tools, offload and libomp libraries."""
+def environment(base=None, build=None):
+    """Environment of the upstream LLVM build: tools, offload and libomp libraries,
+    and the vendor's (CUDA or ROCm) tools and libraries."""
+    build = build or BUILD
     env = dict(base or os.environ)
-    omp = f'{BUILD}/runtimes/runtimes-bins/openmp/runtime/src'
-    env['PATH'] = f'{BUILD}/bin:{CUDA}/bin:' + env.get('PATH', '')
-    libs = f'{omp}:{BUILD}/lib:{BUILD}/lib/x86_64-unknown-linux-gnu'
-    env['LD_LIBRARY_PATH'] = f'{libs}:{CUDA}/lib64:' + env.get('LD_LIBRARY_PATH', '')
+    omp = f'{build}/runtimes/runtimes-bins/openmp/runtime/src'
+    vendor_bin, vendor_lib = ((f'{CUDA}/bin', f'{CUDA}/lib64') if TARGET == 'nvptx'
+                              else (f'{ROCM}/bin', f'{ROCM}/lib'))
+    env['PATH'] = f'{build}/bin:{vendor_bin}:' + env.get('PATH', '')
+    libs = f'{omp}:{build}/lib:{build}/lib/x86_64-unknown-linux-gnu'
+    env['LD_LIBRARY_PATH'] = f'{libs}:{vendor_lib}:' + env.get('LD_LIBRARY_PATH', '')
+    if TARGET == 'amdgpu':
+        env['ROCM_PATH'] = ROCM
     env['LIBRARY_PATH'] = libs + ':' + env.get('LIBRARY_PATH', '')
     env['OMP_TARGET_OFFLOAD'] = 'mandatory'
     return env
@@ -61,7 +84,7 @@ def environment(base=None):
 def run(cmd, cwd=None, timeout=None):
     """Run a command list in the upstream environment; return (rc, stdout, stderr).
     The environment is built per call, so that the GPU a forked replay process is
-    restricted to (CUDA_VISIBLE_DEVICES, set by Kernel._run_on_devices) applies."""
+    restricted to (CUDA/ROCR_VISIBLE_DEVICES, set by Kernel._run_on_devices) applies."""
     try:
         p = subprocess.run(cmd, cwd=cwd, env=environment(), capture_output=True, text=True,
                            timeout=timeout)
@@ -88,7 +111,7 @@ def prepare_kernel_ir(bc, name, out_ll):
     rc, out, err = run([tool('llvm-dis'), bc, '-o', '-'])
     if rc != 0:
         raise RuntimeError(f'llvm-dis {bc} failed: {err}')
-    kernels = re.findall(r'^define [^\n]*ptx_kernel [^\n]*@([\w.$]+)\(', out, re.M)
+    kernels = re.findall(r'^define [^\n]*(?:ptx|amdgpu)_kernel [^\n]*@([\w.$]+)\(', out, re.M)
     if name not in kernels:
         raise RuntimeError(f'kernel {name} not found in {bc}')
     public = []
@@ -116,7 +139,15 @@ def set_launch_bounds(ir, name, max_threads=None, min_teams=None):
     """IR text with the launch bounds of kernel `name` replaced: the kernel gets
     a copy of its attribute group without nvvm.maxntid and nvvm.minctasm, plus the
     given values. None keeps the recorded value."""
-    if max_threads is None and min_teams is None:
+    return set_kernel_attributes(ir, name, dict(zip(_LAUNCH_BOUNDS, (max_threads, min_teams))))
+
+
+def set_kernel_attributes(ir, name, values):
+    """IR text in which kernel `name` gets a copy of its attribute group with the
+    string attributes `values` ({key: value}) replaced. A value of None keeps
+    the recorded attribute."""
+    values = {k: v for k, v in values.items() if v is not None}
+    if not values:
         return ir
     # The attribute group follows the parameters, possibly followed by metadata:
     # define ... @name(...) local_unnamed_addr #12 !guid !53 {
@@ -127,10 +158,9 @@ def set_launch_bounds(ir, name, max_threads=None, min_teams=None):
     group = define.group(1)
     body = re.search(r'^attributes #' + group + r' = \{ ([^\n]*) \}$', ir, re.M).group(1)
     attrs = body
-    for key, value in zip(_LAUNCH_BOUNDS, (max_threads, min_teams)):
-        if value is not None:
-            attrs = re.sub(r'"' + re.escape(key) + r'"="[^"]*" ?', '', attrs).strip()
-            attrs += f' "{key}"="{int(value)}"'
+    for key, value in values.items():
+        attrs = re.sub(r'"' + re.escape(key) + r'"="[^"]*" ?', '', attrs).strip()
+        attrs += f' "{key}"="{value}"'
     new = str(max(int(g) for g in re.findall(r'^attributes #(\d+) ', ir, re.M)) + 1)
     ir = ir[:define.start(1)] + new + ir[define.end(1):]
     return ir + f'\nattributes #{new} = {{ {attrs} }}\n'
@@ -148,8 +178,9 @@ class UpstreamNVIDIA(Device.NVIDIA):
         key = os.path.abspath(original)
         if key not in self._ir_cache:
             self._ir_cache[key] = Path(original).read_text()
-        ir = set_launch_bounds(self._ir_cache[key], Name, kwargs.get('MaxThreads'),
-                               kwargs.get('MinTeams'))
+        mt, mn = kwargs.get('MaxThreads'), kwargs.get('MinTeams')
+        ir = set_launch_bounds(self._ir_cache[key], Name, None if mt is None else int(mt),
+                               None if mn is None else int(mn))
         Path(f'{HashName}.tune.ll').write_text(ir)
         rc, _, err = run([tool('llc'), '-O3', f'-mcpu={ARCH}', f'{HashName}.tune.ll',
                           '-o', f'{HashName}.ptx'])
@@ -162,7 +193,49 @@ class UpstreamNVIDIA(Device.NVIDIA):
         return self.parsePTXAS(out, err)
 
 
+class UpstreamAMDGPU(Device.AMDGPU):
+    """Device.AMDGPU whose binaries are built from the upstream recorded IR.
+
+    The launch bounds are the attributes the fork's AMDGPU attribute pass set:
+    MaxThreads as amdgpu-flat-work-group-size 1,MaxThreads and MinTeams as
+    amdgpu-waves-per-eu (Device.AMDGPU.getWavesPerEU). llc compiles the kernel
+    into an object, reporting its resource usage (kernel-resource-usage
+    remarks), and ld.lld links the object into the code object <stem>.image."""
+    _ir_cache = {}
+
+    def deviceCompile(self, original, Name, HashName, **kwargs):
+        """Returns the resource usage in Device.AMDGPU's layout ({kernel: [VGPRs,
+        LDS bytes, SGPRs, spill bytes per lane, 0]})."""
+        key = os.path.abspath(original)
+        if key not in self._ir_cache:
+            self._ir_cache[key] = Path(original).read_text()
+        mt, mn = kwargs.get('MaxThreads'), kwargs.get('MinTeams')
+        attrs = {'amdgpu-flat-work-group-size': None if mt is None else f'1,{int(mt)}',
+                 'amdgpu-waves-per-eu':
+                     None if mn is None else str(self.getWavesPerEU(mt, int(mn)))}
+        ir = set_kernel_attributes(self._ir_cache[key], Name, attrs)
+        Path(f'{HashName}.tune.ll').write_text(ir)
+        rc, _, err = run([tool('llc'), '-O3', f'-mtriple={_TRIPLE}', f'-mcpu={self.Arch}',
+                          '-filetype=obj', '-pass-remarks-analysis=kernel-resource-usage',
+                          f'{HashName}.tune.ll', '-o', f'{HashName}.o'])
+        if rc != 0:
+            raise RuntimeError(f'llc failed: {err}')
+        rc, _, lerr = run([tool('ld.lld'), '-shared', '--no-undefined', f'{HashName}.o',
+                           '-o', f'{HashName}.image'])
+        if rc != 0:
+            raise RuntimeError(f'ld.lld failed: {lerr}')
+        os.unlink(f'{HashName}.o')
+        return self.parseResourceUsage(err)
+
+    def recordPrefix(self):
+        # Upstream maps the recording at a fixed address (hsa_amd_vmem_*); no
+        # need to disable ASLR as with the fork.
+        return ''
+
+
 def get_device(device_no=0):
+    if TARGET == 'amdgpu':
+        return UpstreamAMDGPU(None, device_no)
     return UpstreamNVIDIA.Load(None, device_no)
 
 
@@ -187,12 +260,15 @@ def stage(json_path, work):
 class UpstreamKernel(Kernel):
     """A recorded kernel tuned with upstream llvm-omp-kernel-replay. The current
     directory must be its work directory (stage)."""
-    # No CUPTI metrics in upstream replays.
+    # No CUPTI or rocprof metrics in upstream replays.
     SkipMetrics = True
 
     def __init__(self, device, stem, dbDir):
         from RRUtil.Search import set_device
         set_device(device)
+        # The device's warm-up (100 ms on the MI50), as Kernel.__init__ sets it.
+        if 'RR_TIMING_WARMUP_MS' not in os.environ:
+            Kernel.TimingWarmupMs = getattr(device, 'TimingWarmupMs', Kernel.TimingWarmupMs)
         info = json.loads(Path(f'{stem}.json').read_text())
         self.Name = info['Name']
         self.recorded = True

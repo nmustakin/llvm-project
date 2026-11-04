@@ -15,6 +15,8 @@ LLVM_SRC=$(cd "$FASTRR/../../.." && pwd)
 : "${FASTRR_STAGE1_BUILD:=$FASTRR_STAGE1_SRC/build}"
 # zstd installation the stage 2 build links (CMAKE_PREFIX_PATH).
 : "${FASTRR_ZSTD:=/data2/nmn/zstd-1.5.6/install}"
+# ROCm installation for AMD GPUs (build-amd.sh, Upstream.py); needs hsa_amd_vmem_* (ROCm 6.0+).
+: "${FASTRR_ROCM:=/opt/rocm}"
 # HeCBench sources (github.com/zjin-lcf/HeCBench, commit f0c817a), src/ directory.
 : "${FASTRR_HECBENCH:=/data2/nmn/rr-metrics/hecbench/src}"
 # Training pool of the ranking models (LLVM 16 grid datasets).
@@ -28,10 +30,25 @@ LLVM_SRC=$(cd "$FASTRR/../../.." && pwd)
 : "${FASTRR_SIF:=/data2/nmn/rr_current.sif}"
 : "${FASTRR_BINDS:=--bind /data2/nmn:/data2/nmn --bind /data3/nmn:/data3/nmn}"
 
+# Python 3.10 or later with the packages of requirements.txt.
+: "${FASTRR_PYTHON:=python3}"
+# Offload target: nvptx (NVIDIA, the paper's T4s) or amdgpu (AMD; native, no container).
+: "${FASTRR_TARGET:=nvptx}"
+case $FASTRR_TARGET in
+  amdgpu) FASTRR_VISIBLE=ROCR_VISIBLE_DEVICES ;;
+  *) FASTRR_VISIBLE=CUDA_VISIBLE_DEVICES ;;
+esac
+
 export FASTRR LLVM_SRC FASTRR_EXP FASTRR_REC FASTRR_STAGE2_BUILD FASTRR_STAGE1_SRC \
   FASTRR_STAGE1_BUILD FASTRR_ZSTD FASTRR_HECBENCH FASTRR_POOL FASTRR_PYLIB FASTRR_SIM \
-  FASTRR_FIGURES FASTRR_SIF FASTRR_BINDS
+  FASTRR_FIGURES FASTRR_SIF FASTRR_BINDS FASTRR_ROCM \
+  FASTRR_TARGET FASTRR_VISIBLE FASTRR_AMD_ARCH FASTRR_PYTHON FASTRR_ROCM_DEVICE_LIBS
 
 # Prefix of a command in the container, and of a Python job of this directory (job.sh).
-FASTRR_RUN="apptainer exec --nv $FASTRR_BINDS $FASTRR_SIF"
+# On AMD the jobs run natively (the shell must be in the render group).
+if [ "$FASTRR_TARGET" = amdgpu ]; then
+  FASTRR_RUN=""
+else
+  FASTRR_RUN="apptainer exec --nv $FASTRR_BINDS $FASTRR_SIF"
+fi
 JOB="$FASTRR_RUN bash $FASTRR/scripts/job.sh"

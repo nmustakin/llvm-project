@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build an application with upstream clang and record it with a stage's runtime
-(inside rr_current.sif).
+(inside rr_current.sif on NVIDIA,
+natively on AMD).
 
 usage: record_app.py <stage> <app> [--keep LINES|all] [--memsize GiB]
 
@@ -20,9 +21,11 @@ from collections import defaultdict
 from pathlib import Path
 
 from paths import FASTRR, X, REC, BUILDS, HEC
+sys.path.insert(0, FASTRR)
+from RRUtil import Upstream  # noqa: E402
 RR = f'{FASTRR}/benchmarks'
-FLAGS = ('-fopenmp -fopenmp-targets=nvptx64 -Xopenmp-target=nvptx64 -march=sm_75 '
-         '-fopenmp-offload-mandatory -foffload-lto -Wl,--embed-bitcode')
+# Offload flags of the target (FASTRR_TARGET): nvptx64 sm_75 or amdgcn-amd-amdhsa gfx906.
+FLAGS = Upstream.OFFLOAD_FLAGS
 # name: (source dirs to copy, build command, run command). The inputs are the
 # paper's (the benchmark modules under RR/benchmarks); LULESH runs 5 iterations,
 # because each kernel is recorded at its first launch.
@@ -63,14 +66,7 @@ APPS['minife-150'] = (APPS['minife'][0], APPS['minife'][1], './miniFE.x -nx 150 
 
 
 def environment(build):
-    env = dict(os.environ)
-    omp = f'{build}/runtimes/runtimes-bins/openmp/runtime/src'
-    libs = f'{omp}:{build}/lib:{build}/lib/x86_64-unknown-linux-gnu'
-    env['PATH'] = f'{build}/bin:/usr/local/cuda/bin:' + env['PATH']
-    env['LD_LIBRARY_PATH'] = f'{libs}:/usr/local/cuda/lib64:' + env.get('LD_LIBRARY_PATH', '')
-    env['LIBRARY_PATH'] = libs
-    env['OMP_TARGET_OFFLOAD'] = 'mandatory'
-    return env
+    return Upstream.environment(build=build)
 
 
 def file_type(path):

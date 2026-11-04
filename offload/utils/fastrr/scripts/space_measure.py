@@ -7,7 +7,7 @@ For every kernel in <stage>/kernels/*.json, a replay of the recorded configurati
 the tuner runs it (--restore-from-device, plus --relocate on stage 2), with no warm-up
 and one repetition, is run three times on an otherwise idle GPU. Recorded per run:
 the wall time of the process (loading the recorded state and one replay), the peak
-device memory of the GPU (nvidia-smi, sampled every 20 ms, minus the idle usage),
+device memory of the GPU (nvidia-smi, or the sysfs VRAM counter on AMD, sampled every 20 ms, minus the idle usage),
 the peak host memory (RSS) of the process, and the size of the kernel's own files.
 The block store of a stage 2 recording is shared by the kernels of its directory and
 is reported per application by record_app.py (sizes-kept.csv), not per kernel.
@@ -17,12 +17,34 @@ from pathlib import Path
 
 import pandas as pd
 
-from paths import X, BUILDS
+from paths import FASTRR, X, BUILDS
+sys.path.insert(0, FASTRR)
+from RRUtil import Upstream  # noqa: E402
 FLAGS = {'stage1': ['--restore-from-device'],
          'stage2': ['--restore-from-device', '--relocate']}
 
 
+def _amd_vram_file(gpu):
+    """sysfs file of the VRAM in use (bytes) on ROCm device `gpu` (KFD order)."""
+    from RRUtil.GPUMonitor import AMDMonitor
+    loc = AMDMonitor().gpus[int(gpu)][1]
+    pci = f'{loc >> 8:02x}:{(loc >> 3) & 0x1f:02x}.{loc & 7}'
+    for card in Path('/sys/class/drm').glob('card[0-9]*'):
+        if not card.name[4:].isdigit():
+            continue
+        if os.path.realpath(card / 'device').endswith(pci):
+            return card / 'device' / 'mem_info_vram_used'
+    raise SystemExit(f'no DRM card for GPU {gpu} ({pci})')
+
+
+_vram = {}
+
+
 def gpu_mib(gpu):
+    if Upstream.TARGET == 'amdgpu':
+        if gpu not in _vram:
+            _vram[gpu] = _amd_vram_file(gpu)
+        return int(_vram[gpu].read_text()) >> 20
     out = subprocess.run(['nvidia-smi', '-i', gpu, '--query-gpu=memory.used',
                           '--format=csv,noheader,nounits'], capture_output=True, text=True).stdout
     return int(out.strip() or 0)
@@ -56,12 +78,8 @@ def main():
     ap.add_argument('--runs', type=int, default=3)
     args = ap.parse_args()
     build = BUILDS[args.stage]
-    gpu = os.environ['CUDA_VISIBLE_DEVICES']
-    env = dict(os.environ)
-    omp = f'{build}/runtimes/runtimes-bins/openmp/runtime/src'
-    env['LD_LIBRARY_PATH'] = (f'{omp}:{build}/lib:{build}/lib/x86_64-unknown-linux-gnu:'
-                              '/usr/local/cuda/lib64:' + env.get('LD_LIBRARY_PATH', ''))
-    env['OMP_TARGET_OFFLOAD'] = 'mandatory'
+    gpu = os.environ[os.environ.get('FASTRR_VISIBLE', 'CUDA_VISIBLE_DEVICES')]
+    env = Upstream.environment(build=build)
     rows = []
     for reg in sorted(glob.glob(f'{X}/{args.stage}/kernels/*.json')):
         app = Path(reg).stem

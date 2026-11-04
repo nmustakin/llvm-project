@@ -3894,6 +3894,8 @@ private:
     uint8_t MemoryProperties[8];
     if (auto Err = getDeviceAttr(HSA_AMD_AGENT_INFO_MEMORY_PROPERTIES,
                                  MemoryProperties)) {
+      // Older ROCm (e.g. 6.0) does not know the attribute.
+      consumeError(std::move(Err));
       IsAPU = false;
       ODBG(OLDT_Init) << "HSA_AMD_AGENT_INFO_MEMORY_PROPERTIES is unavailable, "
                          "assuming not APU";

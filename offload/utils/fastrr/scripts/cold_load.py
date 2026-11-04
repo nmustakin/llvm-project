@@ -9,12 +9,14 @@ recorded configuration as the tuner runs it (--restore-from-device, plus --reloc
 no warm-up, one repetition) is timed; a second replay right after is the warm time.
 The difference is what the first replay process of a tuning run pays to read its recording.
 """
-import argparse, glob, json, os, subprocess, time
+import argparse, glob, json, os, subprocess, sys, time
 from pathlib import Path
 
 import pandas as pd
 
-from paths import X, BUILDS
+from paths import FASTRR, X, BUILDS
+sys.path.insert(0, FASTRR)
+from RRUtil import Upstream  # noqa: E402
 FLAGS = {'stage1': ['--restore-from-device'], 'stage2': ['--restore-from-device', '--relocate']}
 
 
@@ -34,11 +36,7 @@ def main():
     ap.add_argument('--out', required=True)
     args = ap.parse_args()
     build = BUILDS[args.stage]
-    env = dict(os.environ)
-    omp = f'{build}/runtimes/runtimes-bins/openmp/runtime/src'
-    env['LD_LIBRARY_PATH'] = (f'{omp}:{build}/lib:{build}/lib/x86_64-unknown-linux-gnu:'
-                              '/usr/local/cuda/lib64:' + env.get('LD_LIBRARY_PATH', ''))
-    env['OMP_TARGET_OFFLOAD'] = 'mandatory'
+    env = Upstream.environment(build=build)
     rows = []
     for reg in sorted(glob.glob(f'{X}/{args.stage}/kernels/*.json')):
         app = Path(reg).stem

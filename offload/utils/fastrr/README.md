@@ -93,6 +93,35 @@ jobs in a named tmux session, as in the commands below.
 Each job leaves its exit code in `$FASTRR_EXP/exit/<tag>.txt`; the orchestration scripts wait
 for these files to order their lanes.
 
+## AMD GPUs
+
+`FASTRR_TARGET=amdgpu` (in `env.local.sh`) switches the scripts and the tuner to AMD GPUs; it was
+brought up on an AMD Instinct MI50 (gfx906).
+
+- ROCm 6.0 or later (`FASTRR_ROCM`): the AMDGPU plugin maps the recording at its recorded
+  address with `hsa_amd_vmem_*`, which ROCm 5.x lacks (the plugin then does not load at all).
+- Build natively, without the container, in a shell of the render group:
+  `bash $FASTRR/scripts/build-amd.sh` (X86 and AMDGPU, runtime targets `default` and
+  `amdgcn-amd-amdhsa`, the AMDGPU plugin linked against `$FASTRR_ROCM`'s hsa-runtime64), then
+  `bash $FASTRR/scripts/build-test.sh stage2 <GPU>` for the lit tests on the
+  `amdgcn-amd-amdhsa` configurations.
+- clang of LLVM 24 emits code object version 6, which needs ROCm 6.3. `build-amd.sh` writes
+  `clang.cfg` and `clang++.cfg` next to clang with `-mcode-object-version=5` and the device
+  libraries `FASTRR_ROCM_DEVICE_LIBS` (default `$FASTRR_ROCM/amdgcn/bitcode`; on the MI50
+  host, whose ROCm 6.0.0 has none, those of ROCm 5.7.1). Every compile reads them.
+- The plugin dlopens `libhsa-runtime64.so`; `Upstream.environment` and `build-test.sh` put
+  `$FASTRR_ROCM/lib` first on `LD_LIBRARY_PATH`. With ROCm 6.0 the plugin also needs the
+  `checkIfAPU` fix of this branch (an unchecked `llvm::Error` aborted device setup).
+- Upstream generates no LTO lit configuration for AMDGPU: the 16 tests run once.
+- `FASTRR_AMD_ARCH` (default gfx906) is the `-march` of the applications and the llc target.
+- `FASTRR_VISIBLE` is `ROCR_VISIBLE_DEVICES`; each replay process sees exactly its own GPU.
+- `FASTRR_PYTHON` is the Python 3.10 interpreter if `python3` is older.
+- `Upstream.UpstreamAMDGPU` sets MaxThreads as `amdgpu-flat-work-group-size` (1,MaxThreads)
+  and MinTeams as `amdgpu-waves-per-eu` (`Device.AMDGPU.getWavesPerEU`) on the recorded IR,
+  compiles it with llc (resource usage from the `kernel-resource-usage` remarks) and links
+  it with ld.lld into `<stem>.image`.
+- As on NVIDIA, upstream replays collect no metrics and no energy.
+
 ## Environment variables of the tuner
 
 `job.sh` sets these for every job: `RR_UPSTREAM_BUILD` (the stage's build),
