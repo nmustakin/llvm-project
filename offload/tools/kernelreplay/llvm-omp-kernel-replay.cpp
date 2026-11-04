@@ -25,6 +25,7 @@
 #include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Format.h"
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -106,6 +107,36 @@ static cl::opt<bool> RelocateOpt(
              "pointers that cannot be relocated."),
     cl::init(false), cl::cat(ReplayOptions));
 
+static cl::opt<std::string> BatchOpt(
+    "batch",
+    cl::desc("Replay every launch configuration listed in this file within a "
+             "single process. Each line holds '<num-teams> <num-threads>' (0 "
+             "keeps the recorded value); blank lines and lines starting with "
+             "'#' are ignored. The recorded inputs are restored before each "
+             "replay."),
+    cl::init(""), cl::cat(ReplayOptions));
+
+static cl::opt<uint32_t> WarmupMsOpt(
+    "warmup-ms",
+    cl::desc("Replay the first launch configuration repeatedly for at least "
+             "this many milliseconds before timing it, so that the device "
+             "reaches a steady clock."),
+    cl::init(0), cl::cat(ReplayOptions));
+
+static cl::opt<uint32_t> RewarmMsOpt(
+    "rewarm-ms",
+    cl::desc("With --batch, replay every later launch configuration "
+             "repeatedly for at least this many milliseconds before timing "
+             "it."),
+    cl::init(0), cl::cat(ReplayOptions));
+
+static cl::opt<bool> RestoreFromDeviceOpt(
+    "restore-from-device",
+    cl::desc("Keep a copy of the recorded memory on the device, and restore "
+             "the replay memory from it instead of from the host after the "
+             "first replay."),
+    cl::init(false), cl::cat(ReplayOptions));
+
 template <typename... ArgsTy>
 Error createErr(const char *ErrFmt, ArgsTy &&...Args) {
   return llvm::createStringError(llvm::inconvertibleErrorCode(), ErrFmt,
@@ -163,6 +194,65 @@ static Error readDiffHeader(StringRef Buffer, StringRef Kind,
   if (std::memcmp(Header.Magic, RecordReplayDiffMagic, sizeof(Header.Magic)))
     return createErr("the kernel %s output file is not a memory diff",
                      Kind.data());
+  return Error::success();
+}
+
+/// A launch configuration to replay. Zero keeps the recorded value.
+struct LaunchConfigTy {
+  uint32_t NumTeams = 0;
+  uint32_t NumThreads = 0;
+};
+
+/// Read the launch configurations of a batch replay from \p Filename.
+static Error readBatchFile(const std::string &Filename,
+                           SmallVectorImpl<LaunchConfigTy> &Configs) {
+  auto BatchBufferOrErr = MemoryBuffer::getFile(Filename, /*IsText=*/true);
+  if (std::error_code EC = BatchBufferOrErr.getError())
+    return createErr("failed to read the batch file %s: %s", Filename.c_str(),
+                     EC.message().c_str());
+
+  SmallVector<StringRef> Lines;
+  (*BatchBufferOrErr)->getBuffer().split(Lines, '\n');
+  for (auto [LineNo, RawLine] : enumerate(Lines)) {
+    StringRef Line = RawLine.trim();
+    if (Line.empty() || Line.starts_with("#"))
+      continue;
+
+    SmallVector<StringRef, 2> Fields;
+    SplitString(Line, Fields);
+    LaunchConfigTy Config;
+    if (Fields.size() != 2 || Fields[0].getAsInteger(10, Config.NumTeams) ||
+        Fields[1].getAsInteger(10, Config.NumThreads))
+      return createErr("invalid batch file line %zu: expected '<num-teams> "
+                       "<num-threads>'",
+                       LineNo + 1);
+    Configs.push_back(Config);
+  }
+  if (Configs.empty())
+    return createErr("the batch file %s has no launch configurations",
+                     Filename.c_str());
+  return Error::success();
+}
+
+/// Check that a launch configuration respects the recorded teams and threads
+/// limits (min and max), unless they are zero or ignored.
+static Error checkLimits(const LaunchConfigTy &Config,
+                         ArrayRef<uint32_t> TeamsLimits,
+                         ArrayRef<uint32_t> ThreadsLimits) {
+  if (IgnoreLimitsOpt)
+    return Error::success();
+  if (TeamsLimits[0] > 0 &&
+      (Config.NumTeams < TeamsLimits[0] || Config.NumTeams > TeamsLimits[1]))
+    return createErr("number of teams (%" PRIu32
+                     ") is out of the allowed limits (min,max: %" PRIu32
+                     ",%" PRIu32 ")",
+                     Config.NumTeams, TeamsLimits[0], TeamsLimits[1]);
+  if (ThreadsLimits[0] > 0 && (Config.NumThreads < ThreadsLimits[0] ||
+                               Config.NumThreads > ThreadsLimits[1]))
+    return createErr("number of threads (%" PRIu32
+                     ") is out of the allowed limits (min,max: %" PRIu32
+                     ",%" PRIu32 ")",
+                     Config.NumThreads, ThreadsLimits[0], ThreadsLimits[1]);
   return Error::success();
 }
 
@@ -705,9 +795,26 @@ Error replayKernel() {
   if (auto Err = getString(JsonObj, "Name", KernelName))
     return Err;
 
-  // If needed, adjust number of teams and threads, and the device identifier.
-  NumTeams = NumTeamsOpt > 0 ? NumTeamsOpt : NumTeams;
-  NumThreads = NumThreadsOpt > 0 ? NumThreadsOpt : NumThreads;
+  // Select the launch configurations to replay: the ones in the batch file or
+  // the one from the command line. Zero values keep the recorded ones.
+  const bool IsBatch = !BatchOpt.empty();
+  if (IsBatch && (NumTeamsOpt > 0 || NumThreadsOpt > 0))
+    return createErr("--batch cannot be combined with --num-teams or "
+                     "--num-threads");
+
+  SmallVector<LaunchConfigTy> Configs;
+  if (IsBatch) {
+    if (auto Err = readBatchFile(BatchOpt, Configs))
+      return Err;
+  } else {
+    Configs.push_back({NumTeamsOpt, NumThreadsOpt});
+  }
+  for (auto &Config : Configs) {
+    Config.NumTeams = Config.NumTeams > 0 ? Config.NumTeams : NumTeams;
+    Config.NumThreads = Config.NumThreads > 0 ? Config.NumThreads : NumThreads;
+  }
+
+  // If needed, adjust the device identifier.
   DeviceId = DeviceIdOpt >= 0 ? DeviceIdOpt : DeviceId;
 
   // Retrieve the teams and threads limits (min and max).
@@ -735,19 +842,11 @@ Error replayKernel() {
   if (bool(ThreadsLimits[0]) != bool(ThreadsLimits[1]))
     return createErr("ThreadsLimits min and max are inconsistent");
 
-  // If the limits were specified, verify the selected values are valid.
-  if (!IgnoreLimitsOpt && TeamsLimits[0] > 0 &&
-      (NumTeams < TeamsLimits[0] || NumTeams > TeamsLimits[1]))
-    return createErr("number of teams (%" PRIu32
-                     ") is out of the allowed limits (min,max: %" PRIu32
-                     ",%" PRIu32 ")",
-                     NumTeams, TeamsLimits[0], TeamsLimits[1]);
-  if (!IgnoreLimitsOpt && ThreadsLimits[0] > 0 &&
-      (NumThreads < ThreadsLimits[0] || NumThreads > ThreadsLimits[1]))
-    return createErr("number of threads (%" PRIu32
-                     ") is out of the allowed limits (min,max: %" PRIu32
-                     ",%" PRIu32 ")",
-                     NumThreads, ThreadsLimits[0], ThreadsLimits[1]);
+  // If the limits were specified, verify the selected values are valid. A batch
+  // replay checks each configuration before replaying it instead.
+  if (!IsBatch)
+    if (auto Err = checkLimits(Configs[0], TeamsLimits, ThreadsLimits))
+      return Err;
 
   // Retrieve the arguments of the kernel.
   SmallVector<void *> TgtArgs;
@@ -874,15 +973,25 @@ Error replayKernel() {
       std::move(*RecordInputBufferOrErr);
   uint64_t InputSize = RecordInputBuffer->getBufferSize();
 
-  // A relocated replay memory only needs to hold the input snapshot.
+  // A relocated replay memory only needs to hold the input snapshot. The device
+  // copy of the recorded memory is allocated from the replay memory too, after
+  // the replayed allocation, so reserve room for it.
+  uint64_t ReplayMemorySize =
+      Pointers ? std::max<uint64_t>(InputSize, 1) : VAllocSize;
+  if (RestoreFromDeviceOpt)
+    ReplayMemorySize = alignTo(ReplayMemorySize, 16) + alignTo(InputSize, 16);
   int Rc = __tgt_activate_record_replay(
-      DeviceId, Pointers ? std::max<uint64_t>(InputSize, 1) : VAllocSize,
-      Pointers ? nullptr : VAllocAddr, /*IsRecord=*/false, SaveOutputOpt,
+      DeviceId, ReplayMemorySize, Pointers ? nullptr : VAllocAddr,
+      /*IsRecord=*/false, SaveOutputOpt,
       /*EmitReport=*/false, Directory.c_str());
   if (Rc != OMP_TGT_SUCCESS)
     return createErr("failed to activate record replay");
 
+  // The device allocation is kept in the outcome and reused by every replay;
+  // each replay restores the recorded inputs and globals before launching.
   KernelReplayOutcomeTy Outcome;
+  Outcome.RestoreFromDevice = RestoreFromDeviceOpt;
+  uint32_t NumFailed = 0;
 
   // Relocate the pointers in the input snapshot and the kernel arguments to
   // the replay memory. The first allocation is placed at its start, and it is
@@ -923,7 +1032,7 @@ Error replayKernel() {
   }
 
   // The replay compares the device memory with the record output after the
-  // last repetition, without storing the replay output.
+  // last repetition of each configuration, without storing the replay output.
   std::unique_ptr<MemoryBuffer> RecordOutput;
   if (VerifyOpt) {
     Filepath.replace_extension("record_output");
@@ -934,42 +1043,122 @@ Error replayKernel() {
     RecordOutput = std::move(*RecordOutputOrErr);
   }
 
-  // Perform the kernel replay and verification (if needed) for each repetition.
-  for (uint32_t R = 1; R <= RepetitionsOpt; ++R) {
-    if (RecordOutput && R == RepetitionsOpt) {
-      Outcome.ExpectedOutput = RecordOutput->getBufferStart();
-      Outcome.ExpectedOutputSize = RecordOutput->getBufferSize();
-    }
-    Rc = __tgt_target_kernel_replay(
+  auto Replay = [&](const LaunchConfigTy &Config, bool Verify) {
+    Outcome.ExpectedOutput = Verify ? RecordOutput->getBufferStart() : nullptr;
+    Outcome.ExpectedOutputSize = Verify ? RecordOutput->getBufferSize() : 0;
+    return __tgt_target_kernel_replay(
         /*Loc=*/nullptr, DeviceId, OffloadEntries[0].Address,
         const_cast<char *>(RecordInputBuffer->getBufferStart()),
-        R > 0 ? Outcome.ReplayDeviceAlloc : nullptr,
-        RecordInputBuffer->getBufferSize(),
+        Outcome.ReplayDeviceAlloc, RecordInputBuffer->getBufferSize(),
         NumGlobals ? &OffloadEntries[1] : nullptr, NumGlobals, TgtArgs.data(),
-        TgtArgOffsets.data(), NumArgs, NumTeams, NumThreads, SharedMemorySize,
-        LoopTripCount, &Outcome);
-    if (Rc != OMP_TGT_SUCCESS)
+        TgtArgOffsets.data(), NumArgs, Config.NumTeams, Config.NumThreads,
+        SharedMemorySize, LoopTripCount, &Outcome);
+  };
+
+  for (size_t Idx = 0; Idx < Configs.size(); ++Idx) {
+    const LaunchConfigTy &Config = Configs[Idx];
+
+    // In a batch, report a configuration error and continue with the next one.
+    auto HandleConfigError = [&](Error Err) -> Error {
+      if (!IsBatch)
+        return Err;
+      errs() << TOOL_PREFIX << " Error: configuration " << Idx << ": "
+             << toString(std::move(Err)) << "\n";
+      outs() << "||ReplayError|| index: " << Idx << "\n";
+      outs().flush();
+      ++NumFailed;
+      return Error::success();
+    };
+
+    if (IsBatch) {
+      outs() << "||ReplayConfig|| index: " << Idx
+             << " num_teams: " << Config.NumTeams
+             << " num_threads: " << Config.NumThreads << "\n";
+      if (auto Err = checkLimits(Config, TeamsLimits, ThreadsLimits)) {
+        if (auto Err2 = HandleConfigError(std::move(Err)))
+          return Err2;
+        continue;
+      }
+    }
+
+    // A failed launch may leave the device in an unknown state, so it stops a
+    // batch too.
+    auto ReplayErr = [&]() {
+      if (IsBatch)
+        return createErr("failed to replay kernel (configuration %zu)", Idx);
       return createErr("failed to replay kernel");
+    };
 
-    outs() << TOOL_PREFIX << " Replay time (" << R
-           << "): " << Outcome.KernelReplayTimeNs << " ns\n";
-  }
+    // Warm up the device with untimed replays of this configuration.
+    using ClockTy = std::chrono::steady_clock;
+    const uint32_t WarmupMs = Idx == 0 ? WarmupMsOpt : RewarmMsOpt;
+    uint64_t NumWarmupReplays = 0;
+    for (auto Start = ClockTy::now();
+         ClockTy::now() - Start < std::chrono::milliseconds(WarmupMs);
+         ++NumWarmupReplays)
+      if (Replay(Config, /*Verify=*/false) != OMP_TGT_SUCCESS)
+        return ReplayErr();
+    if (NumWarmupReplays)
+      outs() << TOOL_PREFIX << " Warm-up replays: " << NumWarmupReplays << "\n";
 
-  // Verify the replay output if requested.
-  if (VerifyOpt) {
+    // Perform the kernel replay for each repetition, and verify the last one if
+    // requested. Report the times measured with device events when every
+    // repetition has one.
     using VerificationTy = KernelReplayOutcomeTy::VerificationTy;
-    if (Outcome.Verification == VerificationTy::None)
-      return createErr("the replay device memory was not verified");
-    if (Outcome.Verification == VerificationTy::Mismatch)
-      return createErr("replay device memory failed to verify (first "
-                       "difference at offset %" PRIu64 ")",
-                       Outcome.MismatchOffset);
+    Outcome.Verification = VerificationTy::None;
+    SmallVector<uint64_t> TimesNs, DeviceTimesNs;
+    for (uint32_t R = 1; R <= RepetitionsOpt; ++R) {
+      if (Replay(Config, RecordOutput && R == RepetitionsOpt) !=
+          OMP_TGT_SUCCESS)
+        return ReplayErr();
 
-    // The verification was successful.
-    outs() << TOOL_PREFIX << " Replay done, device memory verified\n";
-  } else {
-    outs() << TOOL_PREFIX << " Replay done, verification skipped\n";
+      TimesNs.push_back(Outcome.KernelReplayTimeNs);
+      outs() << TOOL_PREFIX << " Replay time (" << R
+             << "): " << Outcome.KernelReplayTimeNs << " ns\n";
+      if (Outcome.KernelReplayDeviceTimeNs) {
+        DeviceTimesNs.push_back(Outcome.KernelReplayDeviceTimeNs);
+        outs() << TOOL_PREFIX << " Replay device time (" << R
+               << "): " << Outcome.KernelReplayDeviceTimeNs << " ns\n";
+      }
+    }
+    if (DeviceTimesNs.size() == TimesNs.size())
+      TimesNs = std::move(DeviceTimesNs);
+
+    if (IsBatch) {
+      // Report the median replay time of the configuration.
+      llvm::sort(TimesNs);
+      size_t N = TimesNs.size();
+      double MedianNs =
+          N % 2 ? TimesNs[N / 2] : 0.5 * (TimesNs[N / 2 - 1] + TimesNs[N / 2]);
+      outs() << "||ReplayTiming|| duration_seconds: "
+             << format("%.9g", MedianNs / 1.0e9) << "\n";
+    }
+
+    // Check the verification of the last repetition if requested.
+    if (VerifyOpt) {
+      if (Outcome.Verification != VerificationTy::Match) {
+        Error Err =
+            Outcome.Verification == VerificationTy::None
+                ? createErr("the replay device memory was not verified")
+                : createErr("replay device memory failed to verify (first "
+                            "difference at offset %" PRIu64 ")",
+                            Outcome.MismatchOffset);
+        if (auto Err2 = HandleConfigError(std::move(Err)))
+          return Err2;
+        continue;
+      }
+
+      // The verification was successful.
+      outs() << TOOL_PREFIX << " Replay done, device memory verified\n";
+    } else {
+      outs() << TOOL_PREFIX << " Replay done, verification skipped\n";
+    }
+    outs().flush();
   }
+
+  if (NumFailed)
+    return createErr("%" PRIu32 " of %zu batch configurations failed",
+                     NumFailed, Configs.size());
   return Error::success();
 }
 

@@ -1372,6 +1372,16 @@ int32_t DeviceTy::launchKernel(void *TgtEntryPtr, void **TgtVarsPtr,
     Config.ArgSizes = PointerArgSizes.data();
   }
 
+  // When replaying, also time the kernel with device events. Timing is best
+  // effort: the replay continues without it if an event cannot be created.
+  ol_event_handle_t ReplayEvents[2] = {nullptr, nullptr};
+  if (RecordReplay && ReplayOutcome) {
+    ReplayOutcome->KernelReplayDeviceTimeNs = 0;
+    if (olCreateEvent(AsyncInfo.getQueue(), OL_EVENT_FLAGS_ENABLE_PROFILING,
+                      &ReplayEvents[0]))
+      ReplayEvents[0] = nullptr;
+  }
+
   if (auto Res = olLaunchKernel(AsyncInfo.getQueue(), DeviceHandle,
                                 KernelHandle, &Config.Size, LaunchProps,
                                 Config.NumArgs, Config.Args, Config.ArgSizes)) {
@@ -1380,10 +1390,24 @@ int32_t DeviceTy::launchKernel(void *TgtEntryPtr, void **TgtVarsPtr,
     return OFFLOAD_FAIL;
   }
 
+  if (ReplayEvents[0] &&
+      olCreateEvent(AsyncInfo.getQueue(), OL_EVENT_FLAGS_ENABLE_PROFILING,
+                    &ReplayEvents[1]))
+    ReplayEvents[1] = nullptr;
+
   // Record the epilogue data after kernel synchronization.
   if (RecordReplay) {
     if (synchronize(AsyncInfo) != OFFLOAD_SUCCESS)
       return OFFLOAD_FAIL;
+
+    float ElapsedMs = 0.0f;
+    if (ReplayEvents[1] &&
+        !olGetEventElapsedTime(ReplayEvents[0], ReplayEvents[1], &ElapsedMs))
+      ReplayOutcome->KernelReplayDeviceTimeNs =
+          static_cast<uint64_t>(ElapsedMs * 1.0e6);
+    for (ol_event_handle_t Event : ReplayEvents)
+      if (Event && olDestroyEvent(Event))
+        REPORT() << "Failure to destroy a replay timing event.";
 
     if (auto Err = RecordReplay->recordEpilogue(Kernel, RRHandle)) {
       REPORT() << "Failure to record epilogue for kernel "
@@ -1393,6 +1417,20 @@ int32_t DeviceTy::launchKernel(void *TgtEntryPtr, void **TgtVarsPtr,
   }
 
   return OFFLOAD_SUCCESS;
+}
+
+void *DeviceTy::allocReplayCopy(int64_t Size) {
+  RecordReplayTy *RecordReplay =
+      llvm::offload::tmp::__ol_tgt_GetRecordReplay(DeviceHandle);
+  if (!RecordReplay || !RecordReplay->isReplaying())
+    return nullptr;
+  auto AllocOrErr = RecordReplay->allocateUntracked(Size);
+  if (!AllocOrErr) {
+    REPORT() << "Failure to allocate a copy of the replay memory: "
+             << toString(AllocOrErr.takeError());
+    return nullptr;
+  }
+  return *AllocOrErr;
 }
 
 int32_t DeviceTy::synchronize(AsyncInfoTy &AsyncInfo) {
