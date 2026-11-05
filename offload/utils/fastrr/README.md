@@ -107,8 +107,11 @@ brought up on an AMD Instinct MI50 (gfx906).
   `amdgcn-amd-amdhsa` configurations.
 - clang of LLVM 24 emits code object version 6, which needs ROCm 6.3. `build-amd.sh` writes
   `clang.cfg` and `clang++.cfg` next to clang with `-mcode-object-version=5` and the device
-  libraries `FASTRR_ROCM_DEVICE_LIBS` (default `$FASTRR_ROCM/amdgcn/bitcode`; on the MI50
-  host, whose ROCm 6.0.0 has none, those of ROCm 5.7.1). Every compile reads them.
+  libraries `FASTRR_ROCM_DEVICE_LIBS` (default `$FASTRR_ROCM/amdgcn/bitcode`, from the
+  `rocm-device-libs` package). Every compile reads them.
+- rocprof of ROCm 6.0 (`rocprofiler`, `hsa-amd-aqlprofile`) profiles upstream replays with the
+  counter passes of `Device.AMDGPU.MetricPasses` and `RRUtil/amd/rr_metrics.xml`; the tuner
+  does not call it yet (`SkipMetrics`).
 - The plugin dlopens `libhsa-runtime64.so`; `Upstream.environment` and `build-test.sh` put
   `$FASTRR_ROCM/lib` first on `LD_LIBRARY_PATH`. With ROCm 6.0 the plugin also needs the
   `checkIfAPU` fix of this branch (an unchecked `llvm::Error` aborted device setup).
