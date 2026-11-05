@@ -3,6 +3,7 @@
 # input study with stage 2, keeping the kernels of the study.
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 X=$FASTRR_EXP
+export PYTHONPATH=$FASTRR_PYLIB${PYTHONPATH:+:$PYTHONPATH}
 export $FASTRR_VISIBLE=$2
 declare -A KEEP=([minife-150]=290,521 [s3d-s3]=159,165,171,183,220,226 [su3-l24]=41
                  [simplemoc-s1500k]=379 [minisweep-c884]=282,315,348,383 [miniWeather-1600]=760)

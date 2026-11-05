@@ -4,6 +4,7 @@
 st=$1; g=$2; shift 2
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 X=$FASTRR_EXP
+export PYTHONPATH=$FASTRR_PYLIB${PYTHONPATH:+:$PYTHONPATH}
 export $FASTRR_VISIBLE=$g
 declare -A KEEP=(
   [lulesh]=333,584,649,844,1029,1080,1201,1721,1913,2103

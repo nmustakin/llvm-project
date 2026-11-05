@@ -4,7 +4,8 @@
 usage: grid.py --stage stage2 --kernels lulesh:649,s3d:159,...
 
 The paper's grid: one launch bound per distinct binary (the largest MaxThreads among the pairs
-with the same registers and spills), every multiple of 32 threads up to it, and 16 teams
+with the same registers and spills), every multiple of the warp size (32 threads; 64 on AMD
+GPUs) up to it that fits the register file, and 16 teams
 fractions spaced logarithmically in [1/256, 1], timed in batch replay (chunks of 160) with the
 tuner's protocol. The default is timed in batch mode at the start and the end, and speedups are
 relative to their mean. Output: grids/<app>-<line>.csv and .meta.json.
@@ -57,8 +58,9 @@ def main():
         rows = []
         for (regs, spill), (mt, mn) in sorted(reps.items()):
             cfgs, seen = [], set()
-            for nt in range(32, mt + 1, 32):
-                if regs * nt > kernel.Profiler.MaxRegBlock:
+            step = kernel.Profiler.WarpSize
+            for nt in range(step, mt + 1, step):
+                if not kernel.Profiler.blockFits(regs, nt):
                     continue
                 for fr in FRACS:
                     teams = max(1, int(math.ceil(trip * fr / nt)))

@@ -124,6 +124,9 @@ brought up on an AMD Instinct MI50 (gfx906).
   compiles it with llc (resource usage from the `kernel-resource-usage` remarks) and links
   it with ld.lld into `<stem>.image`.
 - As on NVIDIA, upstream replays collect no metrics and no energy.
+- `scripts/measure_noise.py` times every kept kernel in randomized rounds, one replay process
+  per measurement, and reports the coefficient of variation (the measurement-noise check);
+  `$JOB noise 0,...,7 stage2 measure_noise.py --out $FASTRR_EXP/noise --gpus 0,...,7`.
 
 ## Environment variables of the tuner
 

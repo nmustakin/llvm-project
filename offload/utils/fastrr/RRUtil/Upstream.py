@@ -198,9 +198,14 @@ class UpstreamAMDGPU(Device.AMDGPU):
 
     The launch bounds are the attributes the fork's AMDGPU attribute pass set:
     MaxThreads as amdgpu-flat-work-group-size 1,MaxThreads and MinTeams as
-    amdgpu-waves-per-eu (Device.AMDGPU.getWavesPerEU). llc compiles the kernel
-    into an object, reporting its resource usage (kernel-resource-usage
-    remarks), and ld.lld links the object into the code object <stem>.image."""
+    amdgpu-waves-per-eu (Device.AMDGPU.getWavesPerEU). The recorded bitcode is
+    the linked module before the link-time optimization (OpenMPOpt and the rest
+    of the O3 pipeline, which the plugin's JIT runs when it loads the recorded
+    image), so opt -O3 optimizes the kernel after its attributes are set; llc
+    compiles it into an object, reporting its resource usage
+    (kernel-resource-usage remarks), and ld.lld links the object into the code
+    object <stem>.image. Without opt the default binary of minife l169 is 5.8x
+    slower than the recorded image; with it the two take the same time."""
     _ir_cache = {}
 
     def deviceCompile(self, original, Name, HashName, **kwargs):
@@ -215,9 +220,13 @@ class UpstreamAMDGPU(Device.AMDGPU):
                      None if mn is None else str(self.getWavesPerEU(mt, int(mn)))}
         ir = set_kernel_attributes(self._ir_cache[key], Name, attrs)
         Path(f'{HashName}.tune.ll').write_text(ir)
+        rc, _, err = run([tool('opt'), '-O3', f'-mtriple={_TRIPLE}', f'-mcpu={self.Arch}',
+                          f'{HashName}.tune.ll', '-o', f'{HashName}.tune.bc'])
+        if rc != 0:
+            raise RuntimeError(f'opt failed: {err}')
         rc, _, err = run([tool('llc'), '-O3', f'-mtriple={_TRIPLE}', f'-mcpu={self.Arch}',
                           '-filetype=obj', '-pass-remarks-analysis=kernel-resource-usage',
-                          f'{HashName}.tune.ll', '-o', f'{HashName}.o'])
+                          f'{HashName}.tune.bc', '-o', f'{HashName}.o'])
         if rc != 0:
             raise RuntimeError(f'llc failed: {err}')
         rc, _, lerr = run([tool('ld.lld'), '-shared', '--no-undefined', f'{HashName}.o',
@@ -225,6 +234,7 @@ class UpstreamAMDGPU(Device.AMDGPU):
         if rc != 0:
             raise RuntimeError(f'ld.lld failed: {lerr}')
         os.unlink(f'{HashName}.o')
+        os.unlink(f'{HashName}.tune.bc')
         return self.parseResourceUsage(err)
 
     def recordPrefix(self):

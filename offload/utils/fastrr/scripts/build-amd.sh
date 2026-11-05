@@ -10,6 +10,12 @@
 # writes clang.cfg and clang++.cfg next to clang (read by every compile, including the lit
 # tests and the device link of the linker wrapper) with -mcode-object-version=5 and the
 # ROCm device libraries FASTRR_ROCM_DEVICE_LIBS (default $FASTRR_ROCM/amdgcn/bitcode).
+# clang of LLVM 24 no longer links the oclc_daz_opt and oclc_correctly_rounded_sqrt control
+# libraries, which the ocml of older ROCm (6.0) still references (single-precision pow, exp2,
+# log10, ...): the JIT link of such kernels fails on an undefined __oclc_daz_opt. The build
+# therefore points clang at $B/amdgcn-device-libs: links to the ROCm libraries, except
+# oclc_finite_only_{off,on}.bc (which clang always links), which also define the two missing
+# constants with clang's former defaults (no denormal flushing, correctly rounded sqrt).
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 X=$FASTRR_EXP/build; mkdir -p $X
 SRC=$LLVM_SRC
@@ -35,10 +41,24 @@ fi
 : "${FASTRR_ROCM_DEVICE_LIBS:=$FASTRR_ROCM/amdgcn/bitcode}"
 mkdir -p $B/bin
 for cfg in clang.cfg clang++.cfg; do
-  printf -- '-mcode-object-version=5\n--rocm-device-lib-path=%s\n' "$FASTRR_ROCM_DEVICE_LIBS" > $B/bin/$cfg
+  printf -- '-mcode-object-version=5\n--rocm-device-lib-path=%s\n' "$B/amdgcn-device-libs" > $B/bin/$cfg
 done
 nice -n 19 ninja -C $B -j${FASTRR_JOBS:-48}
 rc=$?
+if [ $rc -eq 0 ]; then
+  L=$B/amdgcn-device-libs; rm -rf $L; mkdir -p $L
+  for f in $FASTRR_ROCM_DEVICE_LIBS/*.bc; do ln -s $f $L/; done
+  extra=""
+  for f in oclc_daz_opt_off.bc oclc_correctly_rounded_sqrt_on.bc; do
+    [ -f $FASTRR_ROCM_DEVICE_LIBS/$f ] &&
+      extra+=$($B/bin/llvm-dis $FASTRR_ROCM_DEVICE_LIBS/$f -o - | grep '^@__oclc_')$'\n'
+  done
+  for f in oclc_finite_only_off oclc_finite_only_on; do
+    rm $L/$f.bc
+    { $B/bin/llvm-dis $FASTRR_ROCM_DEVICE_LIBS/$f.bc -o -; printf '%s' "$extra"; } |
+      $B/bin/llvm-as -o $L/$f.bc || rc=1
+  done
+fi
 echo "$rc" > $X/stage2.exit
 echo "end $(date -Is) rc=$rc"
 exit $rc
