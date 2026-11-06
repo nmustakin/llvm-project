@@ -19,8 +19,11 @@ that talk to the record/replay tooling of the LLVM 16 fork:
   then the median of Kernel.TimingRepeats launches timed with device events,
   each launch restoring the recorded memory from a device copy
   (--restore-from-device). A full measurement (Kernel.sample) is a batch
-  replay of one configuration per process. Upstream has no CUPTI metrics or
-  NVML energy window, so metrics are skipped and energy is NaN.
+  replay of one configuration per process. Upstream has no CUPTI metrics, so
+  metrics are skipped. On AMD, a full measurement with energy also integrates
+  the board power (hwmon power1_average) over a window of Kernel.EnergyMinMs of
+  back-to-back launches (--energy-ms), as the LLVM 16 plugin did; elsewhere,
+  energy is NaN.
 
 The LLVM build is RR_UPSTREAM_BUILD (bin/, lib/ and the libomp directory), and
 RR_UPSTREAM_REPLAY_FLAGS adds flags to every replay. FASTRR_TARGET selects the
@@ -90,7 +93,9 @@ def run(cmd, cwd=None, timeout=None):
                            timeout=timeout)
         return p.returncode, p.stdout, p.stderr
     except subprocess.TimeoutExpired as e:
-        return 'timeout', e.stdout or '', e.stderr or ''
+        # TimeoutExpired carries the partial output as bytes, even with text=True.
+        dec = lambda b: b.decode(errors='replace') if isinstance(b, bytes) else (b or '')
+        return 'timeout', dec(e.stdout), dec(e.stderr)
 
 
 def kernel_line(name):
@@ -302,9 +307,13 @@ class UpstreamKernel(Kernel):
                 os.symlink(os.path.realpath(f), dst)
         return sub
 
-    def _replay_batch(self, configs, warmup_ms, restore_from_device=True):
+    def _replay_batch(self, configs, warmup_ms, restore_from_device=True, energy_ms=0,
+                      power_file=None, energies=None):
         """One replay process timing `configs` (dicts of NumTeams/NumThreads) on the
-        current binary. Returns ({position: seconds}, stdout)."""
+        current binary. Returns ({position: seconds}, stdout). With energy_ms and a
+        power file, the tool also measures each configuration's energy per launch over
+        a window of back-to-back launches (--energy-ms), stored in `energies`
+        ({position: joules})."""
         batch_file = f'{self.HashName}.batch.txt'
         with open(batch_file, 'w') as fd:
             for c in configs:
@@ -314,6 +323,8 @@ class UpstreamKernel(Kernel):
              '--repetitions', str(self.TimingRepeats), '--warmup-ms', str(warmup_ms),
              '--rewarm-ms', str(self.BatchRewarmMs),
              *(['--restore-from-device'] if restore_from_device else []),
+             *(['--energy-ms', str(energy_ms), '--power-file', power_file]
+               if energy_ms and power_file else []),
              '--ignore-limits', *REPLAY_FLAGS, f'{self.HashName}.json'], timeout=900)
         times, current = {}, None
         for line in (stdout or '').splitlines():
@@ -324,6 +335,9 @@ class UpstreamKernel(Kernel):
             m = re.match(r'\|\|ReplayTiming\|\| duration_seconds: (\S+)', line)
             if m and current is not None:
                 times[current] = float(m.group(1))
+            m = re.match(r'\|\|ReplayEnergy\|\| joules_per_launch: (\S+)', line)
+            if m and current is not None and energies is not None:
+                energies[current] = float(m.group(1))
         if rc != 0 and len(times) < len(configs):
             print(f'Replay stopped after {len(times)} of {len(configs)} configurations: '
                   f'{(stderr or "").strip().splitlines()[-1:]}', flush=True)
@@ -367,17 +381,60 @@ class UpstreamKernel(Kernel):
             todo = todo[failed + 1:]
         return out
 
+    def profile_metrics(self, NumThreads=None, NumTeams=None, launches=20, timeout=900):
+        """Hardware metrics of one configuration of the current binary on AMD GPUs
+        (the baseline profile of the classification): rocprof runs one replay process
+        per counter pass (Device.AMDGPU.MetricPasses), each with `launches` launches,
+        and Device.AMDGPU.parseMetrics reads the last, warm one. The number of launches
+        is fixed rather than a warm-up time, because rocprof merges the passes by
+        dispatch index and fails if they have different numbers of dispatches.
+        Returns (metrics, seconds), or ({}, seconds) if the profile failed."""
+        import shlex
+        import time as _time
+        if not hasattr(self.Profiler, 'metricsCommand') or TARGET != 'amdgpu':
+            return {}, 0.0
+        cmd = [tool('llvm-omp-kernel-replay'), '--ignore-limits', '--restore-from-device',
+               '--repetitions', str(max(1, int(launches))),
+               *(['--num-teams', str(int(NumTeams))] if NumTeams else []),
+               *(['--num-threads', str(int(NumThreads))] if NumThreads else []),
+               *REPLAY_FLAGS, f'{self.HashName}.json']
+        activities = Path('kernel_activities.csv')
+        activities.unlink(missing_ok=True)
+        t0 = _time.time()
+        try:
+            p = subprocess.run(self.Profiler.metricsCommand(shlex.join(cmd)), shell=True,
+                               env=environment(), capture_output=True, text=True,
+                               timeout=timeout)
+            ok = p.returncode == 0 and activities.exists()
+        except subprocess.TimeoutExpired:
+            ok, p = False, None
+        seconds = _time.time() - t0
+        if not ok:
+            print(f'metrics replay failed: {(p.stderr or "")[-400:] if p else "timeout"}')
+            return {}, seconds
+        try:
+            return self.Profiler.parseMetrics(p.stdout, str(activities)), seconds
+        finally:
+            activities.unlink(missing_ok=True)
+
     def execute(self, NumThreads=None, NumTeams=None, maxIters=9, keepMaxTeam=True,
                 dropSingleTeams=False, device_handle=None, metrics=True, energy=True):
         """`maxIters` timing processes of one configuration (the binary is already
         compiled by Kernel.sample), each a warm-up and the median of TimingRepeats
         launches. Returns what the fork's Kernel.execute returns without metrics."""
-        durations, contended_retries = [], 0
+        durations, joules, contended_retries = [], [], 0
         self.LastMetrics = {}
+        power_file = None
+        if energy and Kernel.EnergyMinMs > 0:
+            from RRUtil.GPUMonitor import get_monitor
+            power_file = get_monitor().power_file(device_handle)
         while len(durations) < maxIters:
             self._wait_for_exclusive_gpu(device_handle)
+            energies = {}
             times, _ = self._replay_batch([dict(NumThreads=NumThreads, NumTeams=NumTeams)],
-                                          self.TimingWarmupMs)
+                                          self.TimingWarmupMs,
+                                          energy_ms=Kernel.EnergyMinMs if power_file else 0,
+                                          power_file=power_file, energies=energies)
             if self._foreign_gpu_processes(device_handle):
                 contended_retries += 1
                 print('GPU shared during timing replay; discarding sample')
@@ -387,4 +444,5 @@ class UpstreamKernel(Kernel):
             if 0 not in times:
                 return [], [], [], [], []
             durations.append(times[0])
-        return [[]], durations, [float('nan')] * len(durations), [None], [None]
+            joules.append(energies.get(0, float('nan')))
+        return [[]], durations, joules, [None], [None]

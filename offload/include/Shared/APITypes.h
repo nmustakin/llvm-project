@@ -172,6 +172,12 @@ struct KernelReplayOutcomeTy {
   bool RestoreFromDevice = false;
   /// The device copy of the recorded memory, if \p RestoreFromDevice is set.
   void *ReplayDeviceBackup = nullptr;
+  /// Whether to launch the kernel on the device memory and globals as the
+  /// previous replay left them, without restoring the recorded inputs. Only
+  /// valid after a first replay has allocated the replay memory. Used for the
+  /// back-to-back launches of an energy measurement window, which therefore
+  /// see the outputs of earlier launches as inputs.
+  bool SkipRestore = false;
 };
 }
 

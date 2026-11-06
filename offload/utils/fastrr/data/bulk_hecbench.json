@@ -1,0 +1,1336 @@
+{
+ "h-accuracy": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/accuracy-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/accuracy-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 8192 10000 10 100",
+  "wrapper": "H_accuracy.py"
+ },
+ "h-ace": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/ace-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/ace-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100",
+  "wrapper": "H_ace.py"
+ },
+ "h-adam": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/adam-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/adam-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 10000 200 100",
+  "wrapper": "H_adam.py"
+ },
+ "h-adamw": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/adamw-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/adam-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1000000 100",
+  "wrapper": "H_adamw.py"
+ },
+ "h-adjacent": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/adjacent-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100000000 1000",
+  "wrapper": "H_adjacent.py"
+ },
+ "h-aligned-types": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/aligned-types-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main",
+  "wrapper": "H_aligned_types.py"
+ },
+ "h-aobench": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/aobench-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100",
+  "wrapper": "H_aobench.py"
+ },
+ "h-asmooth": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/asmooth-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/asmooth-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 8192 2000 9 100",
+  "wrapper": "H_asmooth.py"
+ },
+ "h-atan2": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/atan2-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 10000000 100",
+  "wrapper": "H_atan2.py"
+ },
+ "h-atomicCost": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/atomicCost-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1 10",
+  "wrapper": "H_atomiccost.py"
+ },
+ "h-atomicIntrinsics": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/atomicIntrinsics-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/atomicIntrinsics-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 27 100",
+  "wrapper": "H_atomicintrinsics.py"
+ },
+ "h-atomicReduction": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/atomicReduction-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main",
+  "wrapper": "H_atomicreduction.py"
+ },
+ "h-attention": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/attention-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/attention-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 65536 2048 1000",
+  "wrapper": "H_attention.py"
+ },
+ "h-babelstream": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/babelstream-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main",
+  "wrapper": "H_babelstream.py"
+ },
+ "h-background-subtract": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/background-subtract-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/background-subtract-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 4096 2048 0 102",
+  "wrapper": "H_background_subtract.py"
+ },
+ "h-bezier-surface": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/bezier-surface-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./bs -n 8192",
+  "wrapper": "H_bezier_surface.py"
+ },
+ "h-bilateral": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/bilateral-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/ace-cuda",
+   "/home/nmust004/HeCBench/src/bilateral-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 2960 1440 0.5 0.5 1000",
+  "wrapper": "H_bilateral.py"
+ },
+ "h-black-scholes": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/black-scholes-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100",
+  "wrapper": "H_black_scholes.py"
+ },
+ "h-bspline-vgh": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/bspline-vgh-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/bspline-vgh-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main",
+  "wrapper": "H_bspline_vgh.py"
+ },
+ "h-burger": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/burger-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 8200 8100 100",
+  "wrapper": "H_burger.py"
+ },
+ "h-bwt": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/bwt-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/bwt-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 10000000",
+  "wrapper": "H_bwt.py"
+ },
+ "h-car": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/car-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/car-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100",
+  "wrapper": "H_car.py"
+ },
+ "h-cbsfil": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/cbsfil-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/cbsfil-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 8192 8192 100",
+  "wrapper": "H_cbsfil.py"
+ },
+ "h-ccsd-trpdrv": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/ccsd-trpdrv-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/ccsd-trpdrv-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 160 400 100",
+  "wrapper": "H_ccsd_trpdrv.py"
+ },
+ "h-che": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/che-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main rm -rf out;",
+  "wrapper": "H_che.py"
+ },
+ "h-chi2": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/chi2-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/chi2-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 4000 400000 2000 2000 256 1000",
+  "wrapper": "H_chi2.py"
+ },
+ "h-clenergy": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/clenergy-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main",
+  "wrapper": "H_clenergy.py"
+ },
+ "h-cobahh": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/cobahh-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/cobahh-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1000000 10",
+  "wrapper": "H_cobahh.py"
+ },
+ "h-colorwheel": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/colorwheel-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 10 4096 100",
+  "wrapper": "H_colorwheel.py"
+ },
+ "h-complex": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/complex-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 10000000 1000",
+  "wrapper": "H_complex.py"
+ },
+ "h-contract": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/contract-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 64 5",
+  "wrapper": "H_contract.py"
+ },
+ "h-conversion": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/conversion-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 268435456 10",
+  "wrapper": "H_conversion.py"
+ },
+ "h-convolution3D": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/convolution3D-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 32 1 6 32 32 5 100",
+  "wrapper": "H_convolution3d.py"
+ },
+ "h-cooling": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/cooling-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1000000 1000",
+  "wrapper": "H_cooling.py"
+ },
+ "h-crc64": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/crc64-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 10 5 33554432",
+  "wrapper": "H_crc64.py"
+ },
+ "h-cross": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/cross-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 10000000 100",
+  "wrapper": "H_cross.py"
+ },
+ "h-depixel": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/depixel-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 2048 2048 10",
+  "wrapper": "H_depixel.py"
+ },
+ "h-dispatch": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/dispatch-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main",
+  "wrapper": "H_dispatch.py"
+ },
+ "h-distort": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/distort-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1024 1024 0.001 1000",
+  "wrapper": "H_distort.py"
+ },
+ "h-divergence": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/divergence-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main /home/nmust004/HeCBench/src/divergence-omp/input.txt 10000",
+  "wrapper": "H_divergence.py"
+ },
+ "h-doh": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/doh-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 480 640 100",
+  "wrapper": "H_doh.py"
+ },
+ "h-dp": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/dp-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/..",
+   "/home/nmust004/HeCBench/src/data"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 268435456 1000",
+  "wrapper": "H_dp.py"
+ },
+ "h-dslash": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/dslash-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 256",
+  "wrapper": "H_dslash.py"
+ },
+ "h-ecdh": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/ecdh-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 50000000 100",
+  "wrapper": "H_ecdh.py"
+ },
+ "h-eigenvalue": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/eigenvalue-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 2048 100",
+  "wrapper": "H_eigenvalue.py"
+ },
+ "h-extrema": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/extrema-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/extrema-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100",
+  "wrapper": "H_extrema.py"
+ },
+ "h-fhd": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/fhd-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100000 2097152 0",
+  "wrapper": "H_fhd.py"
+ },
+ "h-floydwarshall": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/floydwarshall-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1024 100 16",
+  "wrapper": "H_floydwarshall.py"
+ },
+ "h-ga": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/ga-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/ga-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1000000 1000 11 1",
+  "wrapper": "H_ga.py"
+ },
+ "h-gabor": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/gabor-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/gabor-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 8640 15360 1000",
+  "wrapper": "H_gabor.py"
+ },
+ "h-gamma-correction": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/gamma-correction-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/gamma-correction-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 7680 4320 256 100",
+  "wrapper": "H_gamma_correction.py"
+ },
+ "h-gaussian": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/gaussian-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main -q -t -s 4096",
+  "wrapper": "H_gaussian.py"
+ },
+ "h-goulash": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/goulash-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/goulash-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 101 5",
+  "wrapper": "H_goulash.py"
+ },
+ "h-groupnorm": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/groupnorm-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/groupnorm-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 32 32 16 16 32 100",
+  "wrapper": "H_groupnorm.py"
+ },
+ "h-gru2": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/gru2-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/gru2-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1024 32 64 128 3 100",
+  "wrapper": "H_gru2.py"
+ },
+ "h-hausdorff": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/hausdorff-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/hausdorff-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100000 100000 100",
+  "wrapper": "H_hausdorff.py"
+ },
+ "h-heat": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/heat-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 4096 1000",
+  "wrapper": "H_heat.py"
+ },
+ "h-heat2d": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/heat2d-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 4096 4096 1000",
+  "wrapper": "H_heat2d.py"
+ },
+ "h-hellinger": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/hellinger-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/hellinger-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100",
+  "wrapper": "H_hellinger.py"
+ },
+ "h-hmm": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/hmm-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main",
+  "wrapper": "H_hmm.py"
+ },
+ "h-idivide": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/idivide-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/idivide-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100",
+  "wrapper": "H_idivide.py"
+ },
+ "h-interleave": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/interleave-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100",
+  "wrapper": "H_interleave.py"
+ },
+ "h-inversek2j": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/inversek2j-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/inversek2j-sycl"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main /home/nmust004/HeCBench/src/inversek2j-sycl/coord_in.txt 100000",
+  "wrapper": "H_inversek2j.py"
+ },
+ "h-ising": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/ising-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/ising-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main -x 5120 -y 5120 -w 10 -n 1000",
+  "wrapper": "H_ising.py"
+ },
+ "h-iso2dfd": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/iso2dfd-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 2048 2048 1000",
+  "wrapper": "H_iso2dfd.py"
+ },
+ "h-jacobi": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/jacobi-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main",
+  "wrapper": "H_jacobi.py"
+ },
+ "h-jenkins-hash": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/jenkins-hash-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 256 16777216 100",
+  "wrapper": "H_jenkins_hash.py"
+ },
+ "h-kalman": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/kalman-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/kalman-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1000 100 3 100",
+  "wrapper": "H_kalman.py"
+ },
+ "h-keccaktreehash": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/keccaktreehash-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main",
+  "wrapper": "H_keccaktreehash.py"
+ },
+ "h-keogh": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/keogh-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/keogh-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 256 20000000 100",
+  "wrapper": "H_keogh.py"
+ },
+ "h-langevin": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/langevin-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 268435456 1000",
+  "wrapper": "H_langevin.py"
+ },
+ "h-laplace3d": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/laplace3d-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/laplace3d-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 128 128 128 100 1",
+  "wrapper": "H_laplace3d.py"
+ },
+ "h-layernorm": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/layernorm-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/layernorm-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 8 1024 768 2000",
+  "wrapper": "H_layernorm.py"
+ },
+ "h-layout": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/layout-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1000",
+  "wrapper": "H_layout.py"
+ },
+ "h-lebesgue": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/lebesgue-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/lebesgue-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1000000 2",
+  "wrapper": "H_lebesgue.py"
+ },
+ "h-libor": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/libor-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100",
+  "wrapper": "H_libor.py"
+ },
+ "h-log2": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/log2-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/log2-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main /home/nmust004/HeCBench/src/log2-cuda/log2_parameters.config",
+  "wrapper": "H_log2.py"
+ },
+ "h-logprob": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/logprob-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1024 8 50527 100",
+  "wrapper": "H_logprob.py"
+ },
+ "h-lombscargle": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/lombscargle-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100",
+  "wrapper": "H_lombscargle.py"
+ },
+ "h-mandelbrot": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/mandelbrot-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1000",
+  "wrapper": "H_mandelbrot.py"
+ },
+ "h-mask": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/mask-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/mask-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 512 512 512 100",
+  "wrapper": "H_mask.py"
+ },
+ "h-matrix-rotate": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/matrix-rotate-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 5000 100",
+  "wrapper": "H_matrix_rotate.py"
+ },
+ "h-maxpool3d": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/maxpool3d-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 2048 2048 96 100",
+  "wrapper": "H_maxpool3d.py"
+ },
+ "h-md": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/md-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/md-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 3 1000",
+  "wrapper": "H_md.py"
+ },
+ "h-mdh": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/mdh-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main -itmax 100",
+  "wrapper": "H_mdh.py"
+ },
+ "h-mergeVS": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/mergeVS-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/mergeVS-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1000",
+  "wrapper": "H_mergevs.py"
+ },
+ "h-moe": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/moe-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/moe-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 32768 384 1 1000",
+  "wrapper": "H_moe.py"
+ },
+ "h-moe-sum": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/moe-sum-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/moe-sum-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 256 4096 100",
+  "wrapper": "H_moe_sum.py"
+ },
+ "h-mr": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/mr-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/mr-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100",
+  "wrapper": "H_mr.py"
+ },
+ "h-mrc": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/mrc-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/mrc-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 10000000 1000",
+  "wrapper": "H_mrc.py"
+ },
+ "h-murmurhash3": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/murmurhash3-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100000 100",
+  "wrapper": "H_murmurhash3.py"
+ },
+ "h-nbody": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/nbody-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/nbody-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 16000 10",
+  "wrapper": "H_nbody.py"
+ },
+ "h-ne": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/ne-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 8192 8192 100",
+  "wrapper": "H_ne.py"
+ },
+ "h-norm2": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/norm2-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100",
+  "wrapper": "H_norm2.py"
+ },
+ "h-nqueen": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/nqueen-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 15 7 100",
+  "wrapper": "H_nqueen.py"
+ },
+ "h-opticalFlow": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/opticalFlow-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/opticalFlow-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main /home/nmust004/HeCBench/src/opticalFlow-cuda/data/frame10.ppm /home/nmust004/HeCBench/src/opticalFlow-cuda/data/frame11.ppm",
+  "wrapper": "H_opticalflow.py"
+ },
+ "h-overlay": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/overlay-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 640 480",
+  "wrapper": "H_overlay.py"
+ },
+ "h-page-rank": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/page-rank-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/page-rank-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main -n 20000 -i 100",
+  "wrapper": "H_page_rank.py"
+ },
+ "h-particle-diffusion": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/particle-diffusion-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/particle-diffusion-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 2000 100",
+  "wrapper": "H_particle_diffusion.py"
+ },
+ "h-permute": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/permute-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 8 100",
+  "wrapper": "H_permute.py"
+ },
+ "h-perplexity": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/perplexity-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/perplexity-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 10000 50 100",
+  "wrapper": "H_perplexity.py"
+ },
+ "h-pointwise": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/pointwise-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/pointwise-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100 8 512 64 10",
+  "wrapper": "H_pointwise.py"
+ },
+ "h-pool": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/pool-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/pool-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 128 48 224 224 54 54 100",
+  "wrapper": "H_pool.py"
+ },
+ "h-present": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/present-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100000 100",
+  "wrapper": "H_present.py"
+ },
+ "h-projectile": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/projectile-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/projectile-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1000",
+  "wrapper": "H_projectile.py"
+ },
+ "h-pso": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/pso-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/pso-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 30 10000",
+  "wrapper": "H_pso.py"
+ },
+ "h-quantBnB": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/quantBnB-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/quantBnB-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 16777216 100",
+  "wrapper": "H_quantbnb.py"
+ },
+ "h-rainflow": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/rainflow-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/rainflow-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100000 100",
+  "wrapper": "H_rainflow.py"
+ },
+ "h-resize": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/resize-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1920 1080 256 256 512 100",
+  "wrapper": "H_resize.py"
+ },
+ "h-rfs": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/rfs-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100 5000000",
+  "wrapper": "H_rfs.py"
+ },
+ "h-rmsnorm": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/rmsnorm-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/rmsnorm-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1 12288 1000",
+  "wrapper": "H_rmsnorm.py"
+ },
+ "h-rodrigues": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/rodrigues-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1000000 10000",
+  "wrapper": "H_rodrigues.py"
+ },
+ "h-rtm8": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/rtm8-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100",
+  "wrapper": "H_rtm8.py"
+ },
+ "h-rushlarsen": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/rushlarsen-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100 100000",
+  "wrapper": "H_rushlarsen.py"
+ },
+ "h-s8n": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/s8n-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/s8n-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1513 2048 100",
+  "wrapper": "H_s8n.py"
+ },
+ "h-sad": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/sad-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/sad-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main /home/nmust004/HeCBench/src/sad-cuda/coins.bmp /home/nmust004/HeCBench/src/sad-cuda/coin.bmp 100",
+  "wrapper": "H_sad.py"
+ },
+ "h-scatterAdd": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/scatterAdd-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 10000000 32 8 1000",
+  "wrapper": "H_scatteradd.py"
+ },
+ "h-scel": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/scel-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/scel-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 2048 50176 100",
+  "wrapper": "H_scel.py"
+ },
+ "h-schur-complement": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/schur-complement-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/schur-complement-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 4096 32 100",
+  "wrapper": "H_schur_complement.py"
+ },
+ "h-secp256k1": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/secp256k1-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100",
+  "wrapper": "H_secp256k1.py"
+ },
+ "h-sheath": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/sheath-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main",
+  "wrapper": "H_sheath.py"
+ },
+ "h-silu": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/silu-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/silu-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 32 32 256 256 100",
+  "wrapper": "H_silu.py"
+ },
+ "h-simpleSpmv": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/simpleSpmv-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/simpleSpmv-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 16777216 10240 100",
+  "wrapper": "H_simplespmv.py"
+ },
+ "h-snake": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/snake-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/snake-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100 /home/nmust004/HeCBench/src/snake-cuda/Datasets/ERR240727_1_E2_30000Pairs.txt 30000 1000",
+  "wrapper": "H_snake.py"
+ },
+ "h-softmax": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/softmax-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 100000 784 100",
+  "wrapper": "H_softmax.py"
+ },
+ "h-sph": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/sph-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main",
+  "wrapper": "H_sph.py"
+ },
+ "h-spm": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/spm-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 256 1000",
+  "wrapper": "H_spm.py"
+ },
+ "h-sundials": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/sundials-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/sundials-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 32 20000 6 1000 3",
+  "wrapper": "H_sundials.py"
+ },
+ "h-surfel": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/surfel-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/surfel-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1024 640 480 100",
+  "wrapper": "H_surfel.py"
+ },
+ "h-svt": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/svt-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/svt-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 12 1280 720 1000",
+  "wrapper": "H_svt.py"
+ },
+ "h-swiglu-oai": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/swiglu-oai-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/swiglu-oai-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 8192 1024 100",
+  "wrapper": "H_swiglu_oai.py"
+ },
+ "h-tissue": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/tissue-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 32 100",
+  "wrapper": "H_tissue.py"
+ },
+ "h-unfold": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/unfold-omp",
+   "/home/nmust004/HeCBench/src/include"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 10000000 1000",
+  "wrapper": "H_unfold.py"
+ },
+ "h-upsample": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/upsample-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/upsample-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 32 64 64 64 100",
+  "wrapper": "H_upsample.py"
+ },
+ "h-vanGenuchten": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/vanGenuchten-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/vanGenuchten-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 256 256 256 1000",
+  "wrapper": "H_vangenuchten.py"
+ },
+ "h-vol2col": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/vol2col-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/vol2col-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1000",
+  "wrapper": "H_vol2col.py"
+ },
+ "h-wenofv": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/wenofv-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/wenofv-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 256 256 64 100",
+  "wrapper": "H_wenofv.py"
+ },
+ "h-wordcount": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/wordcount-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/wordcount-sycl"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 10",
+  "wrapper": "H_wordcount.py"
+ },
+ "h-zeropoint": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/zeropoint-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/zeropoint-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 10000000 100",
+  "wrapper": "H_zeropoint.py"
+ },
+ "h-zoom": {
+  "dirs": [
+   "/home/nmust004/HeCBench/src/zoom-omp",
+   "/home/nmust004/HeCBench/src/include",
+   "/home/nmust004/HeCBench/src/zoom-cuda"
+  ],
+  "build": "make -f Makefile.rr clean; make -f Makefile.rr -j16",
+  "run": "./main 1 3 2160 4096 1000",
+  "wrapper": "H_zoom.py"
+ }
+}

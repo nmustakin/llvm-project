@@ -16,10 +16,18 @@
 # therefore points clang at $B/amdgcn-device-libs: links to the ROCm libraries, except
 # oclc_finite_only_{off,on}.bc (which clang always links), which also define the two missing
 # constants with clang's former defaults (no denormal flushing, correctly rounded sqrt).
+#
+# usage: build-amd.sh [stage2|stage1]. stage1 builds $FASTRR_STAGE1_SRC (batching and the timing
+# protocol on upstream, without the space savings; branch rr-taco-batch-amd) into
+# $FASTRR_STAGE1_BUILD, for the stage 1 against stage 2 comparisons on AMD.
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 X=$FASTRR_EXP/build; mkdir -p $X
-SRC=$LLVM_SRC
-B=$FASTRR_STAGE2_BUILD
+ST=${1:-stage2}
+case $ST in
+  stage2) SRC=$LLVM_SRC; B=$FASTRR_STAGE2_BUILD ;;
+  stage1) SRC=$FASTRR_STAGE1_SRC; B=$FASTRR_STAGE1_BUILD ;;
+  *) echo "unknown stage $ST"; exit 2 ;;
+esac
 : "${FASTRR_AMD_ARCH:=gfx906}"
 echo "start $(date -Is) src=$(git -C $SRC rev-parse HEAD) rocm=$FASTRR_ROCM"
 set -o pipefail
@@ -36,7 +44,7 @@ if [ ! -f $B/CMakeCache.txt ]; then
     -DLLVM_ENABLE_ZSTD=FORCE_ON -Dzstd_DIR=$FASTRR_ZSTD/lib/cmake/zstd \
     -DLIBOMPTARGET_PLUGINS_TO_BUILD="amdgpu;host" \
     -DLIBOMPTARGET_FORCE_AMDGPU_TESTS=ON \
-    -DLIBOMPTARGET_ENABLE_DEBUG=ON || { echo 1 > $X/stage2.exit; exit 1; }
+    -DLIBOMPTARGET_ENABLE_DEBUG=ON || { echo 1 > $X/$ST.exit; exit 1; }
 fi
 : "${FASTRR_ROCM_DEVICE_LIBS:=$FASTRR_ROCM/amdgcn/bitcode}"
 mkdir -p $B/bin
@@ -59,6 +67,6 @@ if [ $rc -eq 0 ]; then
       $B/bin/llvm-as -o $L/$f.bc || rc=1
   done
 fi
-echo "$rc" > $X/stage2.exit
+echo "$rc" > $X/$ST.exit
 echo "end $(date -Is) rc=$rc"
 exit $rc

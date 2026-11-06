@@ -34,12 +34,16 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--stage', required=True)
     ap.add_argument('--out', required=True)
+    ap.add_argument('--apps', help='comma-separated applications (registry names); default all')
     args = ap.parse_args()
     build = BUILDS[args.stage]
     env = Upstream.environment(build=build)
-    rows = []
+    # Append to an existing output, so that applications can be measured one at a time.
+    rows = pd.read_csv(args.out).to_dict('records') if os.path.exists(args.out) else []
     for reg in sorted(glob.glob(f'{X}/{args.stage}/kernels/*.json')):
         app = Path(reg).stem
+        if args.apps and app not in args.apps.split(','):
+            continue
         for line, js in json.loads(Path(reg).read_text()).items():
             stem = js[:-len('.json')]
             files = glob.glob(stem + '.*') + glob.glob(str(Path(js).parent / 'record_blocks.*.store'))

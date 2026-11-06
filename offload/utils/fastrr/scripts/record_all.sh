@@ -12,6 +12,9 @@ declare -A KEEP=(
   [s3d]=159,165,171,177,183,189,195,200,205,210,215,220,226,232
   [minisweep]=282,315,348,383 [miniWeather]=253,308,760 [amgmk]=258 [haccmk]=35
   [rsbench]=37 [simplemoc]=379 [su3]=41 [xsbench]=180 [sw4ck]=none)
+# On the MI50, the sw4ck kernels run 0.25-7.2 ms (on the T4 none lies in 0.1-100 ms); two of them
+# share line 23, and the registry keeps one.
+[ "$FASTRR_TARGET" = amdgpu ] && KEEP[sw4ck]=23,24,25
 declare -A MEM=([lulesh]=8 [minife]=8)
 APPS=${@:-"xsbench rsbench simplemoc su3 haccmk amgmk minisweep miniWeather sw4ck s3d minife lulesh"}
 echo "start $(date -Is) $st GPU $g"; fails=0

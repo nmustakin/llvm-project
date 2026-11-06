@@ -45,6 +45,10 @@ class NVMLMonitor:
             return []
         return [p.pid for p in procs if p.pid != os.getpid()]
 
+    def power_file(self, handle):
+        """No power file on NVIDIA (the upstream tool has no NVML window)."""
+        return None
+
     def energy_mj(self, handle):
         """Board energy counter in mJ, or None."""
         if handle is None:
@@ -130,6 +134,22 @@ class AMDMonitor:
         if counter.value in (0xFFFFFFFF, 0xFFFFFFFFFFFFFFFF):
             return None
         return counter.value * resolution.value / 1e3
+
+    def power_file(self, handle):
+        """The hwmon power1_average file (microwatts) of the GPU, which the
+        upstream replay tool integrates over its energy window, or None."""
+        if handle is None:
+            return None
+        loc = handle[1]
+        pci = f'{loc >> 8:02x}:{(loc >> 3) & 0x1f:02x}.{loc & 7:x}'
+        for card in Path('/sys/class/drm').glob('card[0-9]*'):
+            dev = card / 'device'
+            if card.name.isalnum() and dev.exists() and \
+                    os.path.realpath(dev).endswith(pci):
+                files = sorted(dev.glob('hwmon/hwmon*/power1_average'))
+                if files:
+                    return str(files[0])
+        return None
 
     def _smi_index(self, location_id):
         count = ctypes.c_uint32()

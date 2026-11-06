@@ -63,6 +63,11 @@ for name, (src, args) in SECOND.items():
 APPS['miniWeather-1600'] = ([f'{HEC}/miniWeather-omp-1600', f'{HEC}/include', f'{HEC}/miniWeather-cuda'],
                             'make -f Makefile.rr -j16', './main')
 APPS['minife-150'] = (APPS['minife'][0], APPS['minife'][1], './miniFE.x -nx 150 -ny 150 -nz 150')
+# The bulk HeCBench applications of the transfer study (h-<name>; bulk_registry.py).
+_BULK = Path(FASTRR, 'data', 'bulk_hecbench.json')
+if _BULK.exists():
+    for _name, _b in json.loads(_BULK.read_text()).items():
+        APPS.setdefault(_name, (_b['dirs'], _b['build'], _b['run']))
 
 
 def environment(build):

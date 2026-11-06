@@ -35,6 +35,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -42,6 +43,7 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace llvm;
@@ -129,6 +131,21 @@ static cl::opt<uint32_t> RewarmMsOpt(
              "repeatedly for at least this many milliseconds before timing "
              "it."),
     cl::init(0), cl::cat(ReplayOptions));
+
+static cl::opt<uint32_t> EnergyMsOpt(
+    "energy-ms",
+    cl::desc("After timing a launch configuration, launch it back to back for "
+             "at least this many milliseconds without restoring the inputs, "
+             "and report the energy per launch integrated from the board "
+             "power that --power-file reports."),
+    cl::init(0), cl::cat(ReplayOptions));
+
+static cl::opt<std::string> PowerFileOpt(
+    "power-file",
+    cl::desc("A file that holds the current average board power in "
+             "microwatts, such as the power1_average file of the GPU's hwmon "
+             "directory in sysfs (for --energy-ms)."),
+    cl::init(""), cl::cat(ReplayOptions));
 
 static cl::opt<bool> RestoreFromDeviceOpt(
     "restore-from-device",
@@ -748,6 +765,70 @@ loadRecordOutput(StringRef Filename, const RelocationTy *Relocation) {
 }
 
 /// Replay the kernel and return whether verification occurred.
+/// Samples the average board power from a file, such as the power1_average
+/// file of an AMD GPU in sysfs (microwatts, updated by the firmware every few
+/// milliseconds), while it is alive, and integrates it over a window.
+class PowerIntegratorTy {
+  using ClockTy = std::chrono::steady_clock;
+  std::string Path;
+  std::atomic<bool> Stop{false};
+  std::vector<std::pair<ClockTy::time_point, double>> Samples;
+  bool Ok = true;
+  std::thread Sampler;
+
+  static bool read(const std::string &Path, double &Watts) {
+    auto BufOrErr = MemoryBuffer::getFileAsStream(Path);
+    if (!BufOrErr)
+      return false;
+    uint64_t MicroWatts;
+    if ((*BufOrErr)->getBuffer().trim().getAsInteger(10, MicroWatts))
+      return false;
+    Watts = MicroWatts / 1.0e6;
+    return true;
+  }
+
+public:
+  explicit PowerIntegratorTy(std::string P) : Path(std::move(P)) {
+    Sampler = std::thread([this]() {
+      while (!Stop.load()) {
+        double W = 0;
+        if (!read(Path, W)) {
+          Ok = false;
+          return;
+        }
+        Samples.emplace_back(ClockTy::now(), W);
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+      }
+    });
+  }
+  ~PowerIntegratorTy() {
+    Stop.store(true);
+    if (Sampler.joinable())
+      Sampler.join();
+  }
+
+  /// Stops sampling and integrates the power over [Begin, End] in joules,
+  /// holding each sample until the next one. Returns false if a reading
+  /// failed.
+  bool finish(ClockTy::time_point Begin, ClockTy::time_point End,
+              double &Joules) {
+    Stop.store(true);
+    Sampler.join();
+    Joules = 0;
+    if (!Ok || Samples.empty())
+      return false;
+    for (size_t I = 0; I < Samples.size(); ++I) {
+      auto From = std::max(Samples[I].first, Begin);
+      auto To = std::min(
+          I + 1 < Samples.size() ? Samples[I + 1].first : End, End);
+      if (To > From)
+        Joules += Samples[I].second *
+                  std::chrono::duration<double>(To - From).count();
+    }
+    return true;
+  }
+};
+
 Error replayKernel() {
   if (RepetitionsOpt == 0)
     return createErr("invalid number of repetitions");
@@ -1132,6 +1213,45 @@ Error replayKernel() {
           N % 2 ? TimesNs[N / 2] : 0.5 * (TimesNs[N / 2 - 1] + TimesNs[N / 2]);
       outs() << "||ReplayTiming|| duration_seconds: "
              << format("%.9g", MedianNs / 1.0e9) << "\n";
+    }
+
+    // Measure the energy per launch over a window of back-to-back launches
+    // that reuse the memory of the previous launch, as the LLVM 16 tuner did.
+    if (EnergyMsOpt) {
+      SmallVector<uint64_t> Sorted(TimesNs);
+      llvm::sort(Sorted);
+      double MedianMs =
+          Sorted.empty() ? 1.0 : Sorted[Sorted.size() / 2] / 1.0e6;
+      uint64_t Launches = std::min<uint64_t>(
+          1000000,
+          std::max<uint64_t>(
+              1, (uint64_t)std::ceil(EnergyMsOpt / std::max(MedianMs, 1e-3))));
+      if (PowerFileOpt.empty()) {
+        outs() << "||ReplayEnergy|| unavailable\n";
+      } else {
+        PowerIntegratorTy Integrator(PowerFileOpt);
+        Outcome.SkipRestore = true;
+        auto T0 = ClockTy::now();
+        bool Failed = false;
+        for (uint64_t I = 0; I < Launches && !Failed; ++I)
+          Failed = Replay(Config, /*Verify=*/false) != OMP_TGT_SUCCESS;
+        auto T1 = ClockTy::now();
+        Outcome.SkipRestore = false;
+        double Joules = 0;
+        bool Ok = Integrator.finish(T0, T1, Joules);
+        if (Failed)
+          return ReplayErr();
+        double Seconds = std::chrono::duration<double>(T1 - T0).count();
+        if (Ok && Joules > 0)
+          outs() << "||ReplayEnergy|| joules_per_launch: "
+                 << format("%.9g", Joules / Launches)
+                 << " avg_power_w: " << format("%.6g", Joules / Seconds)
+                 << " launches: " << Launches
+                 << " window_seconds: " << format("%.6g", Seconds)
+                 << " method: power_average\n";
+        else
+          outs() << "||ReplayEnergy|| unavailable\n";
+      }
     }
 
     // Check the verification of the last repetition if requested.

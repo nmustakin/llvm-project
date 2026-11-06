@@ -2679,9 +2679,16 @@ struct AMDGPUDeviceTy : public GenericDeviceTy, AMDGenericDeviceTy {
     return Plugin::success();
   }
 
-  /// Suggest a virtual address for device memory mapping.
+  /// Suggest a virtual address for device memory mapping. As in the CUDA
+  /// plugin, the low 32 bits of the address are 0x40000000, so that the first
+  /// 3 GiB of the memory share their high 32 bits and an 8-byte value inside
+  /// them has a low half of at least 2^30. The relocation of a replay treats
+  /// every 8-byte value that points into the memory in use as a pointer, and
+  /// with the former address 0x1534f7e00000, whose low half lies 130 MiB below
+  /// 2^32, two adjacent 32-bit integers (a, 0x1535) with a small a, as in the
+  /// index arrays of LULESH, miniFE, and XSBench, looked like pointers.
   void *getSuggestedVirtualAddress() override {
-    return reinterpret_cast<void *>(0x1534f7e00000ULL);
+    return reinterpret_cast<void *>(0x153540000000ULL);
   }
 
   /// Allocate \p Size bytes on the device and hints the backend to map it to

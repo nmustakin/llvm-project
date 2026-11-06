@@ -45,13 +45,20 @@ METHODS = {  # name -> (algorithm, options)
     'final-wave-promote': ('rank-batch', dict(no_classify=True, patience=2, refine=True,
                                               wave_teams=True)),
     'final-wave-4gpu': ('rank-batch', dict(FINAL, wave_teams=True)),
+    'final-wave-2gpu': ('rank-batch', dict(FINAL, wave_teams=True)),
+    'final-wave-8gpu': ('rank-batch', dict(FINAL, wave_teams=True)),
     # Multi-fidelity screening: one timing process per proposal, 5 promotions.
     'tpe-mf': ('tpe-mf', {}),
 }
 # Conventional strategies: 60 full evaluations (two timing processes each), 15 initial samples
 # for the model-based ones, no wall-clock cap.
-CONVENTIONAL = {'bo-60': 'bo', 'tpe-60': 'tpe', 'random-60': 'random'}
+CONVENTIONAL = {'bo-60': 'bo', 'tpe-60': 'tpe', 'random-60': 'random',
+                # Energy objectives (Section energy of the paper; AMD measures the energy of
+                # every full evaluation, Upstream.UpstreamKernel.execute).
+                'bo-energy-60': 'bo', 'motpe-60': 'motpe'}
 METHODS.update({m: (a, {}) for m, a in CONVENTIONAL.items()})
+# Objectives of a method's search (speedup unless listed).
+OBJECTIVES = {'bo-energy-60': ['energy'], 'motpe-60': ['speedup', 'energy']}
 SCENARIO = dict(MaxThreads=True, MinTeams=True, NumTeams=True, NumThreads=True)
 
 
@@ -134,7 +141,8 @@ def main():
                     options['devices'] = list(range(args.devices))
                 cache = str(kdir / 'cache.json') if args.cache else None
                 t0 = time.time()
-                kernel.Search(algorithm, ['speedup'], 60, 15, seed, cacheDB=cache, device=0,
+                kernel.Search(algorithm, OBJECTIVES.get(method, ['speedup']), 60, 15, seed,
+                              cacheDB=cache, device=0,
                               options=options, compileTable=compile_table, **SCENARIO)
                 print(f'{args.app} l{line} {method} s{seed}: {time.time() - t0:.0f}s', flush=True)
 

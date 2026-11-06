@@ -50,6 +50,19 @@ def gpu_mib(gpu):
     return int(out.strip() or 0)
 
 
+def settled_idle(gpu, floor, slack=64, timeout=60):
+    """Device memory once the previous replay's memory is released: the driver frees it some
+    time after the process exits, so an idle reading taken at once still contains it. Waits
+    until the usage is within `slack` MiB of `floor` (the usage at the start, on an idle GPU)
+    and returns it, or the last reading after `timeout` seconds."""
+    t0 = time.time()
+    while True:
+        cur = gpu_mib(gpu)
+        if cur <= floor + slack or time.time() - t0 > timeout:
+            return cur
+        time.sleep(0.1)
+
+
 def measure(cmd, env, gpu):
     """Run cmd; return (rc, wall seconds, peak GPU MiB, peak RSS MiB, output)."""
     peak, done = [0], threading.Event()
@@ -76,19 +89,24 @@ def main():
     ap.add_argument('--stage', required=True)
     ap.add_argument('--out', required=True)
     ap.add_argument('--runs', type=int, default=3)
+    ap.add_argument('--apps', help='comma-separated applications (registry names); default all')
     args = ap.parse_args()
     build = BUILDS[args.stage]
     gpu = os.environ[os.environ.get('FASTRR_VISIBLE', 'CUDA_VISIBLE_DEVICES')]
     env = Upstream.environment(build=build)
-    rows = []
+    # Append to an existing output, so that applications can be measured one at a time.
+    floor = gpu_mib(gpu)   # the GPU is idle when the script starts
+    rows = pd.read_csv(args.out).to_dict('records') if os.path.exists(args.out) else []
     for reg in sorted(glob.glob(f'{X}/{args.stage}/kernels/*.json')):
         app = Path(reg).stem
+        if args.apps and app not in args.apps.split(','):
+            continue
         for line, js in json.loads(Path(reg).read_text()).items():
             stem = js[:-len('.json')]
             files = sum(os.path.getsize(f) for f in glob.glob(stem + '.*'))
             info = json.loads(Path(js).read_text())
-            idle = gpu_mib(gpu)
             for run in range(args.runs):
+                idle = settled_idle(gpu, floor)
                 rc, wall, peak, rss, out = measure(
                     [f'{build}/bin/llvm-omp-kernel-replay', '--ignore-limits',
                      *FLAGS[args.stage], js], env, gpu)

@@ -2422,7 +2422,10 @@ int target_replay(ident_t *Loc, DeviceTy &Device, void *HostPtr,
     S.DevPtr = S.TargetTable->EntriesBegin[S.TM->Index].Address;
 
   // Initialize the device memory of each global.
-  for (int32_t I = 0; I < NumGlobals; ++I) {
+  // Launch on the memory as the previous replay left it if requested.
+  const bool SkipRestore =
+      ReplayOutcome && ReplayOutcome->SkipRestore && ReuseDeviceAlloc;
+  for (int32_t I = 0; !SkipRestore && I < NumGlobals; ++I) {
     assert(Globals[I].AuxAddr && "Global has no AuxAddr.");
     assert(Globals[I].Size && "Global has Size zero.");
 
@@ -2460,7 +2463,9 @@ int target_replay(ident_t *Loc, DeviceTy &Device, void *HostPtr,
   void **Backup = ReplayOutcome && ReplayOutcome->RestoreFromDevice
                       ? &ReplayOutcome->ReplayDeviceBackup
                       : nullptr;
-  if (DeviceMemorySize && Backup && *Backup) {
+  if (SkipRestore) {
+    // Keep the device memory of the previous replay.
+  } else if (DeviceMemorySize && Backup && *Backup) {
     int Ret = Device.dataExchange(*Backup, Device, TgtPtr, DeviceMemorySize,
                                   AsyncInfo);
     if (Ret != OFFLOAD_SUCCESS) {

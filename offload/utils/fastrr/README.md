@@ -13,6 +13,7 @@ recording with `llvm-omp-kernel-replay`, so the application never reruns.
 | `RRUtil/` | The tuner. `Upstream.py` connects it to upstream record/replay; `Search.py` holds the search strategies and the ranking model; `Benchmark.py` holds `Kernel.Search`. Copied from branch `fastrr-upstream` of openmp-rr (`record-replay/RR/RRUtil`). |
 | `benchmarks/` | LULESH (`lulesh-omp`), miniFE (`miniFE-omp`), and the second inputs of the input study (`inputs`), from openmp-rr. |
 | `data/pool_landscapes.csv` | Training pool of the ranking model: grid datasets of 48 kernels measured with the LLVM 16 fork. |
+| `data/pool_mi50.csv` | MI50 training pool (`FASTRR_POOL` on AMD): grid datasets of 43 kernels of 10 applications measured with this branch on gfx906 (`scripts/make_pool.py` from `grid.py` output); class `none` until the rocprof classification is wired in. |
 | `scripts/env.sh` | Every path and the container. Set variables before sourcing it to override the defaults. |
 | `scripts/` | Build, recording, tuning, measurement, and analysis scripts (below). |
 | `requirements.txt` | Python packages. |
