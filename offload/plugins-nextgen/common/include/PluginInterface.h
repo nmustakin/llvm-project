@@ -963,6 +963,26 @@ struct GenericDeviceTy : public DeviceAllocatorTy {
   /// Get the total device memory size
   virtual Error getDeviceMemorySize(uint64_t &DSize);
 
+  /// Read the device's cumulative energy counter in millijoules and its
+  /// current core clock in MHz (0 if unknown). Used by kernel replay to
+  /// measure kernel energy. Unsupported by default.
+  virtual Error getEnergyCounter(uint64_t &MilliJoules, uint32_t &ClockMHz) {
+    return Plugin::error(error::ErrorCode::UNSUPPORTED,
+                         "energy counter not supported by this device");
+  }
+
+  /// Start collecting the hardware metrics \p Names for the next kernel
+  /// launch, and return their values once it has completed. Used by kernel
+  /// replay. Unsupported by default.
+  virtual Error beginMetrics(std::vector<std::string> &Names) {
+    return Plugin::error(error::ErrorCode::UNSUPPORTED,
+                         "hardware metrics not supported by this device");
+  }
+  virtual Error endMetrics(std::vector<double> &Values) {
+    return Plugin::error(error::ErrorCode::UNSUPPORTED,
+                         "hardware metrics not supported by this device");
+  }
+
   /// Allocates \p RSize bytes (rounded up to page size) and hints the driver to
   /// map it to \p VAddr. The obtained address is stored in \p Addr. At return
   /// \p RSize contains the actual size which can be equal or larger than the

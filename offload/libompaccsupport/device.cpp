@@ -1433,6 +1433,44 @@ void *DeviceTy::allocReplayCopy(int64_t Size) {
   return *AllocOrErr;
 }
 
+bool DeviceTy::readReplayEnergy(uint64_t &MilliJoules, uint32_t &ClockMHz) {
+  RecordReplayTy *RecordReplay =
+      llvm::offload::tmp::__ol_tgt_GetRecordReplay(DeviceHandle);
+  if (!RecordReplay || !RecordReplay->isReplaying())
+    return false;
+  if (auto Err = RecordReplay->readEnergyCounter(MilliJoules, ClockMHz)) {
+    consumeError(std::move(Err));
+    return false;
+  }
+  return true;
+}
+
+bool DeviceTy::beginReplayMetrics(std::vector<std::string> &Names) {
+  RecordReplayTy *RecordReplay =
+      llvm::offload::tmp::__ol_tgt_GetRecordReplay(DeviceHandle);
+  if (!RecordReplay || !RecordReplay->isReplaying())
+    return false;
+  if (auto Err = RecordReplay->beginMetrics(Names)) {
+    REPORT() << "Failure to start hardware metrics: "
+             << toString(std::move(Err));
+    return false;
+  }
+  return true;
+}
+
+bool DeviceTy::endReplayMetrics(std::vector<double> &Values) {
+  RecordReplayTy *RecordReplay =
+      llvm::offload::tmp::__ol_tgt_GetRecordReplay(DeviceHandle);
+  if (!RecordReplay)
+    return false;
+  if (auto Err = RecordReplay->endMetrics(Values)) {
+    REPORT() << "Failure to collect hardware metrics: "
+             << toString(std::move(Err));
+    return false;
+  }
+  return true;
+}
+
 int32_t DeviceTy::synchronize(AsyncInfoTy &AsyncInfo) {
   ol_queue_handle_t Queue = AsyncInfo.getQueue();
   if (!Queue)

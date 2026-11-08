@@ -23,7 +23,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
+#include <string>
 #include <utility>
+#include <vector>
 
 enum TargetAllocTy : int32_t;
 
@@ -178,6 +180,22 @@ struct KernelReplayOutcomeTy {
   /// back-to-back launches of an energy measurement window, which therefore
   /// see the outputs of earlier launches as inputs.
   bool SkipRestore = false;
+  /// Only restore the replay memory, without launching the kernel. Used to
+  /// measure the energy of the restore alone.
+  bool RestoreOnly = false;
+  /// Read the device energy counter after the replay has completed.
+  bool ReadEnergy = false;
+  /// Whether \p EnergyMilliJoules and \p ClockMHz were read.
+  bool EnergyValid = false;
+  /// The device's cumulative energy counter after the replay, in millijoules.
+  uint64_t EnergyMilliJoules = 0;
+  /// The device's core clock after the replay, in MHz (0 if unknown).
+  uint32_t ClockMHz = 0;
+  /// Hardware metrics to collect for the replayed launch, if any, and their
+  /// values if \p MetricsValid.
+  std::vector<std::string> MetricNames;
+  std::vector<double> MetricValues;
+  bool MetricsValid = false;
 };
 }
 

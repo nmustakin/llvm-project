@@ -13,6 +13,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cuda.h>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 
@@ -29,6 +30,7 @@
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/Frontend/OpenMP/OMPConstants.h"
 #include "llvm/Frontend/OpenMP/OMPGridValues.h"
+#include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FileOutputBuffer.h"
 #include "llvm/Support/FileSystem.h"
@@ -567,6 +569,126 @@ struct CUDADeviceTy : public GenericDeviceTy {
   /// Getters of CUDA references.
   CUcontext getCUDAContext() const { return Context; }
   CUdevice getCUDADevice() const { return Device; }
+
+  /// Read the board's cumulative energy counter and SM clock with NVML, which
+  /// is loaded on first use so the plugin does not depend on it.
+  Error getEnergyCounter(uint64_t &MilliJoules, uint32_t &ClockMHz) override {
+    using InitFnTy = int (*)();
+    using HandleByPciFnTy = int (*)(const char *, void **);
+    using EnergyFnTy = int (*)(void *, unsigned long long *);
+    using ClockFnTy = int (*)(void *, int, unsigned int *);
+    static EnergyFnTy GetEnergy = nullptr;
+    static ClockFnTy GetClock = nullptr;
+    static HandleByPciFnTy ByPci = nullptr;
+    static std::once_flag Once;
+    static bool Loaded = false;
+    std::call_once(Once, []() {
+      auto Lib = llvm::sys::DynamicLibrary::getPermanentLibrary(
+          "libnvidia-ml.so.1");
+      if (!Lib.isValid())
+        return;
+      auto Init =
+          reinterpret_cast<InitFnTy>(Lib.getAddressOfSymbol("nvmlInit_v2"));
+      ByPci = reinterpret_cast<HandleByPciFnTy>(
+          Lib.getAddressOfSymbol("nvmlDeviceGetHandleByPciBusId_v2"));
+      GetEnergy = reinterpret_cast<EnergyFnTy>(
+          Lib.getAddressOfSymbol("nvmlDeviceGetTotalEnergyConsumption"));
+      GetClock = reinterpret_cast<ClockFnTy>(
+          Lib.getAddressOfSymbol("nvmlDeviceGetClockInfo"));
+      Loaded = Init && ByPci && GetEnergy && Init() == 0;
+    });
+    if (!Loaded)
+      return Plugin::error(ErrorCode::UNSUPPORTED, "NVML is not available");
+    if (!NVMLHandle) {
+      int Domain = 0, Bus = 0, Dev = 0;
+      if (auto Err = Plugin::check(
+              cuDeviceGetAttribute(&Domain, CU_DEVICE_ATTRIBUTE_PCI_DOMAIN_ID,
+                                   Device),
+              "error in cuDeviceGetAttribute: %s"))
+        return Err;
+      if (auto Err = Plugin::check(
+              cuDeviceGetAttribute(&Bus, CU_DEVICE_ATTRIBUTE_PCI_BUS_ID, Device),
+              "error in cuDeviceGetAttribute: %s"))
+        return Err;
+      if (auto Err = Plugin::check(
+              cuDeviceGetAttribute(&Dev, CU_DEVICE_ATTRIBUTE_PCI_DEVICE_ID,
+                                   Device),
+              "error in cuDeviceGetAttribute: %s"))
+        return Err;
+      char BusId[32];
+      snprintf(BusId, sizeof(BusId), "%08x:%02x:%02x.0", Domain, Bus, Dev);
+      if (ByPci(BusId, &NVMLHandle) != 0) {
+        NVMLHandle = nullptr;
+        return Plugin::error(ErrorCode::UNSUPPORTED,
+                             "no NVML device for PCI bus id %s", BusId);
+      }
+    }
+    unsigned long long Value = 0;
+    if (GetEnergy(NVMLHandle, &Value) != 0)
+      return Plugin::error(ErrorCode::UNSUPPORTED,
+                           "the NVML energy counter is not available");
+    MilliJoules = Value;
+    unsigned int Clock = 0;
+    // NVML_CLOCK_SM is 1.
+    ClockMHz = GetClock && GetClock(NVMLHandle, 1, &Clock) == 0 ? Clock : 0;
+    return Plugin::success();
+  }
+
+  /// Hardware metrics with CUPTI range profiling (kernel replay, automatic
+  /// ranges) through the nvmetrics library, which is loaded on first use from
+  /// LIBOMPTARGET_NVMETRICS_LIBRARY (default libnv_metrics.so).
+  using MetricsStartFnTy = double (*)(std::vector<std::string> &, int);
+  using MetricsStopFnTy = std::vector<double> (*)();
+  static bool loadNVMetrics(MetricsStartFnTy &Start, MetricsStopFnTy &Stop) {
+    static MetricsStartFnTy StartFn = nullptr;
+    static MetricsStopFnTy StopFn = nullptr;
+    static std::once_flag Once;
+    std::call_once(Once, []() {
+      const char *Path = std::getenv("LIBOMPTARGET_NVMETRICS_LIBRARY");
+      auto Lib = llvm::sys::DynamicLibrary::getPermanentLibrary(
+          Path ? Path : "libnv_metrics.so");
+      if (!Lib.isValid())
+        return;
+      StartFn = reinterpret_cast<MetricsStartFnTy>(Lib.getAddressOfSymbol(
+          "_ZN9nvmetrics19measureMetricsStartERSt6vectorINSt7__cxx1112basic_"
+          "stringIcSt11char_traitsIcESaIcEEESaIS6_EEi"));
+      StopFn = reinterpret_cast<MetricsStopFnTy>(
+          Lib.getAddressOfSymbol("_ZN9nvmetrics18measureMetricsStopEv"));
+    });
+    Start = StartFn;
+    Stop = StopFn;
+    return Start && Stop;
+  }
+
+  Error beginMetrics(std::vector<std::string> &Names) override {
+    MetricsStartFnTy Start;
+    MetricsStopFnTy Stop;
+    if (!loadNVMetrics(Start, Stop))
+      return Plugin::error(ErrorCode::UNSUPPORTED,
+                           "the nvmetrics library is not available");
+    if (auto Err = setContext())
+      return Err;
+    Start(Names, static_cast<int>(Device));
+    NumMetrics = Names.size();
+    return Plugin::success();
+  }
+
+  Error endMetrics(std::vector<double> &Values) override {
+    MetricsStartFnTy Start;
+    MetricsStopFnTy Stop;
+    if (!NumMetrics || !loadNVMetrics(Start, Stop))
+      return Plugin::error(ErrorCode::INVALID_ARGUMENT,
+                           "hardware metrics were not started");
+    if (auto Err = setContext())
+      return Err;
+    Values = Stop();
+    bool Ok = Values.size() == NumMetrics;
+    NumMetrics = 0;
+    if (!Ok)
+      return Plugin::error(ErrorCode::UNKNOWN,
+                           "unexpected number of metric values");
+    return Plugin::success();
+  }
 
   Expected<void *> getNativeHandle() override {
     return reinterpret_cast<void *>(Device);
@@ -1528,6 +1650,12 @@ private:
 
   /// The CUDA device handler.
   CUdevice Device = CU_DEVICE_INVALID;
+
+  /// The NVML handle of the device, once its energy counter has been read.
+  void *NVMLHandle = nullptr;
+
+  /// The number of hardware metrics being collected, if any.
+  size_t NumMetrics = 0;
 
   /// The compute capability of the corresponding CUDA device.
   struct ComputeCapabilityTy {

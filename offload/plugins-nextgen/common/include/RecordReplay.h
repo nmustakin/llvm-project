@@ -328,6 +328,14 @@ public:
   /// memory snapshots do not cover it. When replaying, it holds a device copy
   /// of the recorded memory.
   Expected<void *> allocateUntracked(uint64_t Size);
+
+  /// Read the device's cumulative energy counter (millijoules) and its core
+  /// clock (MHz, 0 if unknown), for measuring the energy of replayed kernels.
+  Error readEnergyCounter(uint64_t &MilliJoules, uint32_t &ClockMHz);
+
+  /// Collect hardware metrics around the next kernel launch.
+  Error beginMetrics(std::vector<std::string> &Names);
+  Error endMetrics(std::vector<double> &Values);
   Error deallocate(void *Ptr);
 
 private:

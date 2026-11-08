@@ -22,6 +22,8 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include <string>
+#include <vector>
 
 #include "ExclusiveAccess.h"
 #include "OffloadEntry.h"
@@ -174,6 +176,15 @@ struct DeviceTy {
   /// memory snapshots do not cover, to keep a copy of the recorded memory.
   /// Returns nullptr on failure.
   void *allocReplayCopy(int64_t Size);
+
+  /// Read the device's cumulative energy counter in millijoules and its core
+  /// clock in MHz while replaying. Returns false if it is not available.
+  bool readReplayEnergy(uint64_t &MilliJoules, uint32_t &ClockMHz);
+
+  /// Collect hardware metrics around the next replayed kernel launch. Return
+  /// false if they are not available.
+  bool beginReplayMetrics(std::vector<std::string> &Names);
+  bool endReplayMetrics(std::vector<double> &Values);
 
   /// Deallocates memory which \p TgtPtrBegin points at and returns
   /// OFFLOAD_SUCCESS/OFFLOAD_FAIL when succeeds/fails. p Kind dictates what

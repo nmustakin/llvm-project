@@ -134,10 +134,12 @@ static cl::opt<uint32_t> RewarmMsOpt(
 
 static cl::opt<uint32_t> EnergyMsOpt(
     "energy-ms",
-    cl::desc("After timing a launch configuration, launch it back to back for "
-             "at least this many milliseconds without restoring the inputs, "
-             "and report the energy per launch integrated from the board "
-             "power that --power-file reports."),
+    cl::desc("After timing each launch configuration, measure the kernel's "
+             "energy per launch over a window of at least this many "
+             "milliseconds. With --power-file, launch it back to back without "
+             "restoring the inputs and integrate the board power that the file "
+             "reports. Otherwise read the device energy counter (NVML on "
+             "NVIDIA GPUs) as --energy-mode says."),
     cl::init(0), cl::cat(ReplayOptions));
 
 static cl::opt<std::string> PowerFileOpt(
@@ -153,6 +155,42 @@ static cl::opt<bool> RestoreFromDeviceOpt(
              "the replay memory from it instead of from the host after the "
              "first replay."),
     cl::init(false), cl::cat(ReplayOptions));
+
+static cl::opt<std::string> EnergyModeOpt(
+    "energy-mode",
+    cl::desc("How --energy-ms measures energy. 'launch' (default): launch the "
+             "kernel back to back without restoring its memory, and report the "
+             "ratio of the window's median kernel time to the timed median "
+             "(time_ratio), which flags kernels whose inputs change their "
+             "behavior. 'restore': restore the recorded state before every "
+             "launch, and subtract the energy of as many restores alone."),
+    cl::init("launch"), cl::cat(ReplayOptions));
+
+static cl::opt<std::string> MetricsOpt(
+    "metrics",
+    cl::desc("After timing each launch configuration, collect these hardware "
+             "metrics (comma-separated device metric names, or 'default') in "
+             "one more replay. On NVIDIA GPUs they are CUPTI/Perfworks metrics "
+             "collected with the nvmetrics library."),
+    cl::init(""), cl::cat(ReplayOptions));
+
+/// The metrics of --metrics=default: those of the earlier tuning studies
+/// (occupancy, branch uniformity, DRAM sectors, global and local requests), and
+/// those of kernel classification and memory-traffic analysis.
+static const char *DefaultMetrics[] = {
+    "sm__warps_active.avg.pct_of_peak_sustained_active",
+    "smsp__sass_average_branch_targets_threads_uniform.pct",
+    "dram__sectors_read.sum",
+    "dram__sectors_write.sum",
+    "l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum",
+    "l1tex__t_requests_pipe_lsu_mem_global_op_st.sum",
+    "l1tex__t_requests_pipe_lsu_mem_local_op_ld.sum",
+    "l1tex__t_requests_pipe_lsu_mem_local_op_st.sum",
+    "sm__throughput.avg.pct_of_peak_sustained_elapsed",
+    "dram__throughput.avg.pct_of_peak_sustained_elapsed",
+    "lts__t_sector_hit_rate.pct",
+    "lts__t_sectors.sum",
+    "smsp__inst_executed.sum"};
 
 template <typename... ArgsTy>
 Error createErr(const char *ErrFmt, ArgsTy &&...Args) {
@@ -1215,9 +1253,11 @@ Error replayKernel() {
              << format("%.9g", MedianNs / 1.0e9) << "\n";
     }
 
-    // Measure the energy per launch over a window of back-to-back launches
-    // that reuse the memory of the previous launch, as the LLVM 16 tuner did.
-    if (EnergyMsOpt) {
+    // Measure the kernel energy per launch: with --power-file, by integrating
+    // the board power over a window of back-to-back launches that reuse the
+    // memory of the previous launch (ROCm hwmon); otherwise from the device
+    // energy counter (NVML).
+    if (EnergyMsOpt && !PowerFileOpt.empty()) {
       SmallVector<uint64_t> Sorted(TimesNs);
       llvm::sort(Sorted);
       double MedianMs =
@@ -1226,32 +1266,157 @@ Error replayKernel() {
           1000000,
           std::max<uint64_t>(
               1, (uint64_t)std::ceil(EnergyMsOpt / std::max(MedianMs, 1e-3))));
-      if (PowerFileOpt.empty()) {
+      PowerIntegratorTy Integrator(PowerFileOpt);
+      Outcome.SkipRestore = true;
+      auto T0 = ClockTy::now();
+      bool Failed = false;
+      for (uint64_t I = 0; I < Launches && !Failed; ++I)
+        Failed = Replay(Config, /*Verify=*/false) != OMP_TGT_SUCCESS;
+      auto T1 = ClockTy::now();
+      Outcome.SkipRestore = false;
+      double Joules = 0;
+      bool Ok = Integrator.finish(T0, T1, Joules);
+      if (Failed)
+        return ReplayErr();
+      double Seconds = std::chrono::duration<double>(T1 - T0).count();
+      if (Ok && Joules > 0)
+        outs() << "||ReplayEnergy|| joules_per_launch: "
+               << format("%.9g", Joules / Launches)
+               << " avg_power_w: " << format("%.6g", Joules / Seconds)
+               << " launches: " << Launches
+               << " window_seconds: " << format("%.6g", Seconds)
+               << " method: power_average\n";
+      else
         outs() << "||ReplayEnergy|| unavailable\n";
-      } else {
-        PowerIntegratorTy Integrator(PowerFileOpt);
-        Outcome.SkipRestore = true;
-        auto T0 = ClockTy::now();
-        bool Failed = false;
-        for (uint64_t I = 0; I < Launches && !Failed; ++I)
-          Failed = Replay(Config, /*Verify=*/false) != OMP_TGT_SUCCESS;
-        auto T1 = ClockTy::now();
-        Outcome.SkipRestore = false;
-        double Joules = 0;
-        bool Ok = Integrator.finish(T0, T1, Joules);
-        if (Failed)
-          return ReplayErr();
-        double Seconds = std::chrono::duration<double>(T1 - T0).count();
-        if (Ok && Joules > 0)
-          outs() << "||ReplayEnergy|| joules_per_launch: "
-                 << format("%.9g", Joules / Launches)
-                 << " avg_power_w: " << format("%.6g", Joules / Seconds)
-                 << " launches: " << Launches
-                 << " window_seconds: " << format("%.6g", Seconds)
-                 << " method: power_average\n";
-        else
-          outs() << "||ReplayEnergy|| unavailable\n";
+    } else if (EnergyMsOpt) {
+      // The energy windows do not verify, so keep the verification outcome
+      // of the last timed repetition.
+      const auto Verification = Outcome.Verification;
+      const uint64_t MismatchOffset = Outcome.MismatchOffset;
+      auto Median = [](SmallVector<uint64_t> V) -> double {
+        if (V.empty())
+          return 0;
+        llvm::sort(V);
+        size_t N = V.size();
+        return N % 2 ? V[N / 2] : 0.5 * (V[N / 2 - 1] + V[N / 2]);
+      };
+      const double TimedNs = Median(TimesNs);
+      bool Valid = true;
+      SmallVector<uint64_t> WindowNs;
+      // Replay N times after a first, unmeasured call whose energy reading
+      // starts the window; the last call reads it again. The energy counter is
+      // read only at the two ends, since a read takes milliseconds. With
+      // N == 0, run for EnergyMsOpt.
+      auto Window = [&](bool RestoreOnly, bool SkipRestore, uint64_t &N,
+                        uint64_t &DeltaMJ, double &Seconds) -> bool {
+        Outcome.RestoreOnly = RestoreOnly;
+        Outcome.SkipRestore = SkipRestore;
+        Outcome.ReadEnergy = true;
+        if (Replay(Config, /*Verify=*/false) != OMP_TGT_SUCCESS)
+          return false;
+        Valid &= Outcome.EnergyValid;
+        uint64_t E0 = Outcome.EnergyMilliJoules;
+        Outcome.ReadEnergy = false;
+        auto Start = ClockTy::now();
+        uint64_t Count = 0;
+        auto Step = [&]() {
+          if (Replay(Config, /*Verify=*/false) != OMP_TGT_SUCCESS)
+            return false;
+          if (!RestoreOnly && Outcome.KernelReplayDeviceTimeNs)
+            WindowNs.push_back(Outcome.KernelReplayDeviceTimeNs);
+          return true;
+        };
+        for (; N ? Count + 1 < N
+                 : ClockTy::now() - Start <
+                       std::chrono::milliseconds(EnergyMsOpt);
+             ++Count)
+          if (!Step())
+            return false;
+        Outcome.ReadEnergy = true;
+        if (!Step())
+          return false;
+        ++Count;
+        Seconds = std::chrono::duration<double>(ClockTy::now() - Start).count();
+        Valid &= Outcome.EnergyValid && Outcome.EnergyMilliJoules >= E0;
+        DeltaMJ = Valid ? Outcome.EnergyMilliJoules - E0 : 0;
+        N = Count;
+        return true;
+      };
+      const bool LaunchMode = EnergyModeOpt == "launch";
+      uint64_t Launches = 0, Restores = 0, ReplayMJ = 0, RestoreMJ = 0;
+      double ReplaySeconds = 0, RestoreSeconds = 0;
+      bool Ok = Window(/*RestoreOnly=*/false, /*SkipRestore=*/LaunchMode,
+                       Launches, ReplayMJ, ReplaySeconds);
+      const uint32_t ClockMHz = Outcome.ClockMHz;
+      if (Ok && !LaunchMode) {
+        Restores = Launches;
+        Ok = Window(/*RestoreOnly=*/true, /*SkipRestore=*/false, Restores,
+                    RestoreMJ, RestoreSeconds);
       }
+      Outcome.RestoreOnly = false;
+      Outcome.SkipRestore = false;
+      Outcome.ReadEnergy = false;
+      Outcome.Verification = Verification;
+      Outcome.MismatchOffset = MismatchOffset;
+      if (!Ok)
+        return ReplayErr();
+      if (Valid && Launches && ReplayMJ) {
+        // The ratio of the window's median kernel time to the timed median
+        // flags kernels whose behavior changes on their own outputs (launch
+        // mode), which makes the energy unrepresentative.
+        double WindowMedianNs = Median(WindowNs);
+        double BusyNs = 0;
+        for (uint64_t T : WindowNs)
+          BusyNs += T;
+        double KernelJ =
+            (double(ReplayMJ) - double(RestoreMJ)) / 1.0e3 / Launches;
+        outs() << "||ReplayEnergy|| joules_per_launch: "
+               << format("%.9g", KernelJ) << " avg_power_w: "
+               << format("%.6g", ReplayMJ / 1.0e3 / ReplaySeconds)
+               << " launches: " << Launches << " window_seconds: "
+               << format("%.6g", ReplaySeconds)
+               << " mode: " << EnergyModeOpt << " time_ratio: "
+               << format("%.6g", TimedNs ? WindowMedianNs / TimedNs : 0.0)
+               << " busy_fraction: "
+               << format("%.6g", BusyNs / 1.0e9 / ReplaySeconds);
+        if (!LaunchMode)
+          outs() << " replay_joules_per_launch: "
+                 << format("%.9g", ReplayMJ / 1.0e3 / Launches)
+                 << " restore_joules_per_launch: "
+                 << format("%.9g", RestoreMJ / 1.0e3 / Launches)
+                 << " restore_seconds: " << format("%.6g", RestoreSeconds);
+        outs() << " sm_clock_mhz: " << ClockMHz << "\n";
+      } else {
+        outs() << "||ReplayEnergy|| unavailable\n";
+      }
+    }
+
+    // Collect hardware metrics in one more replay.
+    if (!MetricsOpt.empty()) {
+      const auto Verification = Outcome.Verification;
+      const uint64_t MismatchOffset = Outcome.MismatchOffset;
+      Outcome.MetricNames.clear();
+      if (MetricsOpt == "default") {
+        for (const char *Name : DefaultMetrics)
+          Outcome.MetricNames.push_back(Name);
+      } else {
+        SmallVector<StringRef> Names;
+        StringRef(MetricsOpt).split(Names, ',', -1, /*KeepEmpty=*/false);
+        for (StringRef Name : Names)
+          Outcome.MetricNames.push_back(Name.trim().str());
+      }
+      int Rc = Replay(Config, /*Verify=*/false);
+      if (Rc == OMP_TGT_SUCCESS && Outcome.MetricsValid)
+        for (size_t I = 0; I < Outcome.MetricNames.size(); ++I)
+          outs() << "||NVMetric|| " << Outcome.MetricNames[I] << ": "
+                 << format("%.9g", Outcome.MetricValues[I]) << "\n";
+      else if (Rc == OMP_TGT_SUCCESS)
+        outs() << "||NVMetric|| unavailable\n";
+      Outcome.MetricNames.clear();
+      Outcome.Verification = Verification;
+      Outcome.MismatchOffset = MismatchOffset;
+      if (Rc != OMP_TGT_SUCCESS)
+        return ReplayErr();
     }
 
     // Check the verification of the last repetition if requested.

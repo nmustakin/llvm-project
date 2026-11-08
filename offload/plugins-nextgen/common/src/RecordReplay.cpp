@@ -222,6 +222,19 @@ Expected<void *> RecordReplayTy::allocateUntracked(uint64_t Size) {
 
 Error RecordReplayTy::deallocate(void *Ptr) { return Plugin::success(); }
 
+Error RecordReplayTy::readEnergyCounter(uint64_t &MilliJoules,
+                                        uint32_t &ClockMHz) {
+  return Device.getEnergyCounter(MilliJoules, ClockMHz);
+}
+
+Error RecordReplayTy::beginMetrics(std::vector<std::string> &Names) {
+  return Device.beginMetrics(Names);
+}
+
+Error RecordReplayTy::endMetrics(std::vector<double> &Values) {
+  return Device.endMetrics(Values);
+}
+
 void RecordReplayTy::addPointerLocation(void *TgtPtrAddr) {
   if (!isRecording())
     return;

@@ -2497,6 +2497,24 @@ int target_replay(ident_t *Loc, DeviceTy &Device, void *HostPtr,
     }
   }
 
+  // Read the device energy counter once the work submitted so far completes.
+  auto ReadEnergy = [&]() {
+    if (!ReplayOutcome || !ReplayOutcome->ReadEnergy)
+      return OFFLOAD_SUCCESS;
+    if (Device.synchronize(AsyncInfo) != OFFLOAD_SUCCESS)
+      return OFFLOAD_FAIL;
+    ReplayOutcome->EnergyValid = Device.readReplayEnergy(
+        ReplayOutcome->EnergyMilliJoules, ReplayOutcome->ClockMHz);
+    return OFFLOAD_SUCCESS;
+  };
+
+  // Only restore the replay memory, to measure the restore's energy alone.
+  if (ReplayOutcome && ReplayOutcome->RestoreOnly) {
+    if (Device.synchronize(AsyncInfo) != OFFLOAD_SUCCESS)
+      return OFFLOAD_FAIL;
+    return ReadEnergy();
+  }
+
   KernelArgsTy KernelArgs{};
   KernelArgs.Version = OMP_KERNEL_ARG_VERSION;
   KernelArgs.NumArgs = NumArgs;
@@ -2511,11 +2529,26 @@ int target_replay(ident_t *Loc, DeviceTy &Device, void *HostPtr,
   KernelArgs.Flags.StrictBlocks = true;
   KernelArgs.Flags.StrictThreads = true;
 
+  // Collect hardware metrics for this launch if requested.
+  bool Metrics = false;
+  if (ReplayOutcome && !ReplayOutcome->MetricNames.empty()) {
+    ReplayOutcome->MetricsValid = false;
+    if (Device.synchronize(AsyncInfo) != OFFLOAD_SUCCESS)
+      return OFFLOAD_FAIL;
+    Metrics = Device.beginReplayMetrics(ReplayOutcome->MetricNames);
+  }
+
   int Ret = Device.launchKernel(Symbols[0].DevPtr, TgtArgs, TgtOffsets,
                                 KernelArgs, ReplayOutcome, AsyncInfo);
   if (Ret != OFFLOAD_SUCCESS) {
     REPORT() << "Failed to launch kernel replay.";
     return OFFLOAD_FAIL;
   }
-  return OFFLOAD_SUCCESS;
+  if (Metrics) {
+    if (Device.synchronize(AsyncInfo) != OFFLOAD_SUCCESS)
+      return OFFLOAD_FAIL;
+    ReplayOutcome->MetricsValid =
+        Device.endReplayMetrics(ReplayOutcome->MetricValues);
+  }
+  return ReadEnergy();
 }
