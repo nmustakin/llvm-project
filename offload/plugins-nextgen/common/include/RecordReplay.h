@@ -328,6 +328,12 @@ public:
   /// memory snapshots do not cover it. When replaying, it holds a device copy
   /// of the recorded memory.
   Expected<void *> allocateUntracked(uint64_t Size);
+  /// Allocates device memory outside the record replay space, for scratch
+  /// memory that a replay needs but the recording did not size, such as the
+  /// reduction buffer of a replay with more teams than recorded.
+  Expected<void *> allocateScratch(uint64_t Size);
+  /// Frees memory returned by allocateScratch().
+  Error freeScratch(void *Ptr);
 
   /// Read the device's cumulative energy counter (millijoules) and its core
   /// clock (MHz, 0 if unknown), for measuring the energy of replayed kernels.

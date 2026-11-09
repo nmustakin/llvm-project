@@ -172,6 +172,10 @@ struct KernelReplayOutcomeTy {
   /// Whether to keep a device copy of the recorded memory and to restore the
   /// replay memory from it, instead of from the host, in later replays.
   bool RestoreFromDevice = false;
+  /// The number of teams of the recorded launch, or zero if unknown. The
+  /// recorded kernel launch environment has a reduction buffer for this many
+  /// teams; a replay with more teams gets a reduction buffer of its own.
+  uint32_t RecordedNumTeams = 0;
   /// The device copy of the recorded memory, if \p RestoreFromDevice is set.
   void *ReplayDeviceBackup = nullptr;
   /// Whether to launch the kernel on the device memory and globals as the

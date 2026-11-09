@@ -222,6 +222,23 @@ Expected<void *> RecordReplayTy::allocateUntracked(uint64_t Size) {
 
 Error RecordReplayTy::deallocate(void *Ptr) { return Plugin::success(); }
 
+Expected<void *> RecordReplayTy::allocateScratch(uint64_t Size) {
+  DeviceAllocatorTy &Allocator = Device;
+  auto AllocOrErr = Allocator.allocate(Size, /*HstPtr=*/nullptr,
+                                       TARGET_ALLOC_DEVICE);
+  if (!AllocOrErr)
+    return AllocOrErr.takeError();
+  if (!*AllocOrErr)
+    return Plugin::error(ErrorCode::OUT_OF_RESOURCES,
+                         "failed to allocate replay scratch memory");
+  return *AllocOrErr;
+}
+
+Error RecordReplayTy::freeScratch(void *Ptr) {
+  DeviceAllocatorTy &Allocator = Device;
+  return Allocator.free(Ptr, TARGET_ALLOC_DEVICE);
+}
+
 Error RecordReplayTy::readEnergyCounter(uint64_t &MilliJoules,
                                         uint32_t &ClockMHz) {
   return Device.getEnergyCounter(MilliJoules, ClockMHz);

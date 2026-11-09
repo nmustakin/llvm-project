@@ -1110,6 +1110,7 @@ Error replayKernel() {
   // each replay restores the recorded inputs and globals before launching.
   KernelReplayOutcomeTy Outcome;
   Outcome.RestoreFromDevice = RestoreFromDeviceOpt;
+  Outcome.RecordedNumTeams = NumTeams;
   uint32_t NumFailed = 0;
 
   // Relocate the pointers in the input snapshot and the kernel arguments to

@@ -177,6 +177,11 @@ struct DeviceTy {
   /// Returns nullptr on failure.
   void *allocReplayCopy(int64_t Size);
 
+  /// The reduction buffer of replays with more teams than recorded, outside
+  /// the replay memory, and its size.
+  void *ReplayReductionBuffer = nullptr;
+  uint64_t ReplayReductionBufferSize = 0;
+
   /// Read the device's cumulative energy counter in millijoules and its core
   /// clock in MHz while replaying. Returns false if it is not available.
   bool readReplayEnergy(uint64_t &MilliJoules, uint32_t &ClockMHz);

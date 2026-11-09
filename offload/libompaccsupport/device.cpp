@@ -1329,6 +1329,43 @@ int32_t DeviceTy::launchKernel(void *TgtEntryPtr, void **TgtVarsPtr,
     return OFFLOAD_FAIL;
   }
 
+  // A replay reuses the recorded kernel launch environment, whose reduction
+  // buffer holds one element per recorded team and ends the recorded memory.
+  // A replay with more teams would write past it, so point the launch
+  // environment, which the replay memory restore resets, at a buffer of its own
+  // outside the replay memory.
+  if (ReplayOutcome && ReplayOutcome->RecordedNumTeams &&
+      KernelLaunchInfo.ReductionDataSize && DynPtrSlot && *DynPtrSlot &&
+      *DynPtrSlot != reinterpret_cast<void *>(~uintptr_t(0)) &&
+      Config.Size.NumGroups.x > ReplayOutcome->RecordedNumTeams) {
+    RecordReplayTy *RR =
+        llvm::offload::tmp::__ol_tgt_GetRecordReplay(DeviceHandle);
+    uint64_t Size =
+        uint64_t(KernelLaunchInfo.ReductionDataSize) * Config.Size.NumGroups.x;
+    if (RR && RR->isReplaying() && Size > ReplayReductionBufferSize) {
+      if (ReplayReductionBuffer)
+        if (auto Err = RR->freeScratch(ReplayReductionBuffer))
+          consumeError(std::move(Err));
+      ReplayReductionBuffer = nullptr;
+      ReplayReductionBufferSize = 0;
+      auto AllocOrErr = RR->allocateScratch(Size);
+      if (!AllocOrErr) {
+        REPORT() << "Failure to allocate a replay reduction buffer: "
+                 << toString(AllocOrErr.takeError());
+        return OFFLOAD_FAIL;
+      }
+      ReplayReductionBuffer = *AllocOrErr;
+      ReplayReductionBufferSize = Size;
+    }
+    if (RR && RR->isReplaying()) {
+      char *KLE = static_cast<char *>(*DynPtrSlot);
+      // Ordered after the restore of the replay memory in the same queue.
+      if (submitData(KLE + offsetof(KernelLaunchEnvironmentTy, ReductionBuffer),
+                     &ReplayReductionBuffer, sizeof(void *), AsyncInfo))
+        return OFFLOAD_FAIL;
+    }
+  }
+
   INFO(OMP_INFOTYPE_PLUGIN_KERNEL, DeviceID,
        "Launching kernel %s with [%u,%u,%u] blocks and [%u,%u,%u] threads in "
        "%s mode with tripcount %" PRIu64 "\n",
