@@ -70,6 +70,14 @@ if _BULK.exists():
         APPS.setdefault(_name, (_b['dirs'], _b['build'], _b['run']))
 
 
+def accept_exit(app, rc, out):
+    """Whether a nonzero exit of the recorded run is the application's own verdict on a correct
+    run. RSBench exits 1 when its checksum has no reference value, as for -l 100000; the T4 run
+    gives checksum 351806 with and without recording."""
+    return (app == 'rsbench' and rc == 1 and 'Simulation Complete' in out
+            and 'checksum: 351806' in out)
+
+
 def environment(build):
     return Upstream.environment(build=build)
 
@@ -127,7 +135,7 @@ def main():
     seconds = time.perf_counter() - t0
     Path(X, args.stage, 'logs').mkdir(parents=True, exist_ok=True)
     Path(X, args.stage, 'logs', f'record-{args.app}.log').write_text(p.stdout + p.stderr)
-    if p.returncode != 0:
+    if p.returncode != 0 and not accept_exit(args.app, p.returncode, p.stdout):
         sys.exit(f'{args.app}: recording failed rc={p.returncode}')
 
     # Size of the whole recording, by file type, before deleting anything.
