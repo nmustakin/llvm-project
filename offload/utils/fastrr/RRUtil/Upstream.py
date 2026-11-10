@@ -19,11 +19,19 @@ that talk to the record/replay tooling of the LLVM 16 fork:
   then the median of Kernel.TimingRepeats launches timed with device events,
   each launch restoring the recorded memory from a device copy
   (--restore-from-device). A full measurement (Kernel.sample) is a batch
-  replay of one configuration per process. Upstream has no CUPTI metrics, so
-  metrics are skipped. On AMD, a full measurement with energy also integrates
-  the board power (hwmon power1_average) over a window of Kernel.EnergyMinMs of
-  back-to-back launches (--energy-ms), as the LLVM 16 plugin did; elsewhere,
-  energy is NaN.
+  replay of one configuration per process.
+- Energy: a full measurement with energy (Kernel.EnergyMinMs, RR_ENERGY_MIN_MS > 0)
+  adds a window of back-to-back launches of at least that long (--energy-ms) to
+  each timing process. On NVIDIA GPUs the replay tool reads the board's energy
+  counter through NVML, which needs RR_UPSTREAM_ENERGY=1 and a build with the
+  tool's --energy-ms (the energy branch); on AMD GPUs it integrates the board
+  power (hwmon power1_average, --power-file), as the LLVM 16 plugin did. With
+  RR_BATCH_ENERGY_MS > 0, every configuration of a batch screen gets its own
+  window too. Without energy, energy is NaN.
+- Metrics: on NVIDIA GPUs, CUPTI metrics (RR_UPSTREAM_METRICS=1) are collected
+  in one more process with --metrics=default after a warm-up; on AMD GPUs the
+  classification profiles the default with rocprof (profile_metrics). Otherwise
+  metrics are skipped.
 
 The LLVM build is RR_UPSTREAM_BUILD (bin/, lib/ and the libomp directory), and
 RR_UPSTREAM_REPLAY_FLAGS adds flags to every replay. FASTRR_TARGET selects the
@@ -57,6 +65,15 @@ OFFLOAD_FLAGS = (f'-fopenmp -fopenmp-targets={_TRIPLE} -Xopenmp-target={_TRIPLE}
                  '-Wl,--embed-bitcode')
 # Extra flags of every replay, e.g. --relocate with the space-saving changes.
 REPLAY_FLAGS = os.environ.get('RR_UPSTREAM_REPLAY_FLAGS', '').split()
+# Kernel energy on NVIDIA (--energy-ms with the NVML counter) only with
+# RR_UPSTREAM_ENERGY=1, which needs a build whose replay tool has the option (the
+# energy branch). AMD GPUs measure energy whenever a hwmon power file exists.
+ENERGY = os.environ.get('RR_UPSTREAM_ENERGY', '0') == '1'
+# Energy of batch screens (FastRR's energy mode, F1): with RR_UPSTREAM_ENERGY=1 and
+# RR_BATCH_ENERGY_MS > 0, every configuration of a batch replay gets its own launch-mode
+# energy window of that length after its timed launches, and sample_batch returns
+# (valid, seconds, joules per launch) triples. 0 (default): batch screens are timed only.
+BATCH_ENERGY_MS = int(os.environ.get('RR_BATCH_ENERGY_MS', '0'))
 # Recording files a work directory links to (.pointers: relocatable recordings).
 RECORDING_SUFFIXES = ('.json', '.record_input', '.record_output', '.globals', '.bc',
                       '.pointers')
@@ -275,8 +292,22 @@ def stage(json_path, work):
 class UpstreamKernel(Kernel):
     """A recorded kernel tuned with upstream llvm-omp-kernel-replay. The current
     directory must be its work directory (stage)."""
-    # No CUPTI or rocprof metrics in upstream replays.
-    SkipMetrics = True
+    # CUPTI metrics only on NVIDIA with RR_UPSTREAM_METRICS=1 (a build with --metrics);
+    # AMD GPUs use rocprof through profile_metrics.
+    SkipMetrics = TARGET == 'amdgpu' or os.environ.get('RR_UPSTREAM_METRICS', '0') != '1'
+
+    @staticmethod
+    def _energy_flags(ms, device_handle=None):
+        """Replay tool flags for an energy window of at least `ms` ms, or [] if this
+        device cannot measure energy: --energy-ms with the GPU's hwmon power file on
+        AMD, and with the NVML energy counter on NVIDIA (RR_UPSTREAM_ENERGY=1)."""
+        if not ms or ms <= 0:
+            return []
+        if TARGET == 'amdgpu':
+            from RRUtil.GPUMonitor import get_monitor
+            power_file = get_monitor().power_file(device_handle)
+            return ['--energy-ms', str(int(ms)), '--power-file', power_file] if power_file else []
+        return [f'--energy-ms={int(ms)}'] if ENERGY else []
 
     def __init__(self, device, stem, dbDir):
         from RRUtil.Search import set_device
@@ -307,13 +338,10 @@ class UpstreamKernel(Kernel):
                 os.symlink(os.path.realpath(f), dst)
         return sub
 
-    def _replay_batch(self, configs, warmup_ms, restore_from_device=True, energy_ms=0,
-                      power_file=None, energies=None):
+    def _replay_batch(self, configs, warmup_ms, restore_from_device=True, extra=()):
         """One replay process timing `configs` (dicts of NumTeams/NumThreads) on the
-        current binary. Returns ({position: seconds}, stdout). With energy_ms and a
-        power file, the tool also measures each configuration's energy per launch over
-        a window of back-to-back launches (--energy-ms), stored in `energies`
-        ({position: joules})."""
+        current binary, with `extra` tool flags (--energy-ms, --metrics). Returns
+        ({position: seconds}, stdout)."""
         batch_file = f'{self.HashName}.batch.txt'
         with open(batch_file, 'w') as fd:
             for c in configs:
@@ -323,10 +351,9 @@ class UpstreamKernel(Kernel):
              '--repetitions', str(self.TimingRepeats), '--warmup-ms', str(warmup_ms),
              '--rewarm-ms', str(self.BatchRewarmMs),
              *(['--restore-from-device'] if restore_from_device else []),
-             *(['--energy-ms', str(energy_ms), '--power-file', power_file]
-               if energy_ms and power_file else []),
-             '--ignore-limits', *REPLAY_FLAGS, f'{self.HashName}.json'], timeout=900)
+             '--ignore-limits', *REPLAY_FLAGS, *extra, f'{self.HashName}.json'], timeout=900)
         times, current = {}, None
+        self.LastBatchEnergies = {}         # position -> joules per launch (--energy-ms)
         for line in (stdout or '').splitlines():
             m = re.match(r'\|\|ReplayConfig\|\| index: (\d+)', line)
             if m:
@@ -336,8 +363,8 @@ class UpstreamKernel(Kernel):
             if m and current is not None:
                 times[current] = float(m.group(1))
             m = re.match(r'\|\|ReplayEnergy\|\| joules_per_launch: (\S+)', line)
-            if m and current is not None and energies is not None:
-                energies[current] = float(m.group(1))
+            if m and current is not None:
+                self.LastBatchEnergies[current] = float(m.group(1))
         if rc != 0 and len(times) < len(configs):
             print(f'Replay stopped after {len(times)} of {len(configs)} configurations: '
                   f'{(stderr or "").strip().splitlines()[-1:]}', flush=True)
@@ -346,11 +373,16 @@ class UpstreamKernel(Kernel):
     def sample_batch(self, configs, deviceID=0):
         """Time several launch configurations of one binary in one replay process,
         as Kernel.sample_batch does with the fork. Returns, in order, a list of
-        (valid, duration_seconds). A configuration that makes the replay fail is
-        marked invalid and the rest continue in a new process."""
+        (valid, duration_seconds), or (valid, duration_seconds, joules_per_launch)
+        with batch energy (BATCH_ENERGY_MS; NaN where the window reported none).
+        A configuration that makes the replay fail is marked invalid and the rest
+        continue in a new process."""
+        nan = float('nan')
         lb = {k: configs[0][k] for k in ('MaxThreads', 'MinTeams')
               if configs[0].get(k) is not None}
         device_handle = self._gpu_handle(deviceID)
+        energy_flags = self._energy_flags(BATCH_ENERGY_MS, device_handle)
+        with_energy = bool(energy_flags)
         stats = self.Profiler.deviceCompile(self.original, self.Name, self.HashName, **lb)
         regs = stats[self.Name][0] if stats and self.Name in stats else None
         out = [None] * len(configs)
@@ -358,13 +390,15 @@ class UpstreamKernel(Kernel):
         for i, c in enumerate(configs):
             nt = c.get('NumThreads')
             if regs is not None and nt is not None and not self.Profiler.blockFits(regs, nt):
-                out[i] = (False, None)
+                out[i] = (False, None, nan) if with_energy else (False, None)
             else:
                 todo.append(i)
         contended_retries = 0
         while todo:
             self._wait_for_exclusive_gpu(device_handle)
-            times, _ = self._replay_batch([configs[i] for i in todo], self.TimingWarmupMs)
+            times, _ = self._replay_batch([configs[i] for i in todo], self.TimingWarmupMs,
+                                          extra=energy_flags)
+            energies = self.LastBatchEnergies
             if self._foreign_gpu_processes(device_handle) and \
                     contended_retries < self.ContendedRetries:
                 contended_retries += 1
@@ -372,12 +406,13 @@ class UpstreamKernel(Kernel):
                 continue
             for pos, i in enumerate(todo):
                 if pos in times:
-                    out[i] = (True, times[pos])
+                    out[i] = ((True, times[pos], energies.get(pos, nan)) if with_energy
+                              else (True, times[pos]))
             missing = [pos for pos in range(len(todo)) if pos not in times]
             if not missing:
                 break
             failed = missing[0]            # the configuration that stopped the process
-            out[todo[failed]] = (False, None)
+            out[todo[failed]] = (False, None, nan) if with_energy else (False, None)
             todo = todo[failed + 1:]
         return out
 
@@ -421,20 +456,17 @@ class UpstreamKernel(Kernel):
                 dropSingleTeams=False, device_handle=None, metrics=True, energy=True):
         """`maxIters` timing processes of one configuration (the binary is already
         compiled by Kernel.sample), each a warm-up and the median of TimingRepeats
-        launches. Returns what the fork's Kernel.execute returns without metrics."""
-        durations, joules, contended_retries = [], [], 0
+        launches, plus the kernel energy per launch if energy is requested and
+        Kernel.EnergyMinMs > 0, then optionally one metrics process (NVIDIA). Returns
+        what the fork's Kernel.execute returns."""
+        durations, energies, clocks, contended_retries = [], [], [], 0
         self.LastMetrics = {}
-        power_file = None
-        if energy and Kernel.EnergyMinMs > 0:
-            from RRUtil.GPUMonitor import get_monitor
-            power_file = get_monitor().power_file(device_handle)
+        config = dict(NumThreads=NumThreads, NumTeams=NumTeams)
+        energy_flags = self._energy_flags(Kernel.EnergyMinMs, device_handle) if energy else []
         while len(durations) < maxIters:
             self._wait_for_exclusive_gpu(device_handle)
-            energies = {}
-            times, _ = self._replay_batch([dict(NumThreads=NumThreads, NumTeams=NumTeams)],
-                                          self.TimingWarmupMs,
-                                          energy_ms=Kernel.EnergyMinMs if power_file else 0,
-                                          power_file=power_file, energies=energies)
+            times, stdout = self._replay_batch([config], self.TimingWarmupMs,
+                                               extra=energy_flags)
             if self._foreign_gpu_processes(device_handle):
                 contended_retries += 1
                 print('GPU shared during timing replay; discarding sample')
@@ -444,5 +476,41 @@ class UpstreamKernel(Kernel):
             if 0 not in times:
                 return [], [], [], [], []
             durations.append(times[0])
-            joules.append(energies.get(0, float('nan')))
-        return [[]], durations, joules, [None], [None]
+            m = re.search(r'\|\|ReplayEnergy\|\| joules_per_launch: (\S+)[^\n]*', stdout or '')
+            energies.append(float(m.group(1)) if m else float('nan'))
+            if m:
+                c = re.search(r'sm_clock_mhz: (\d+)', m.group(0))
+                if c:
+                    clocks.append(float(c.group(1)))
+                # Launch-mode quality: the window's kernel time against the timed
+                # median (far from 1: the kernel changes on its own outputs) and
+                # the busy share of the window (idle gaps count toward energy).
+                for key in ('time_ratio', 'busy_fraction'):
+                    q = re.search(rf'{key}: (\S+)', m.group(0))
+                    if q:
+                        self.LastMetrics.setdefault(f'energy_{key}', []).append(float(q.group(1)))
+            elif energy_flags:
+                print('Replay did not report kernel energy; recording NaN', flush=True)
+        if clocks:
+            self.LastMetrics['sm_clock_mhz'] = sorted(clocks)[len(clocks) // 2]
+        for key in ('energy_time_ratio', 'energy_busy_fraction'):
+            if key in self.LastMetrics:
+                v = sorted(self.LastMetrics[key])
+                self.LastMetrics[key] = v[len(v) // 2]
+        if not metrics or self.SkipMetrics:
+            return [[]], durations, energies, [None], [None]
+
+        # Metrics once, after the timing samples, at a steady clock.
+        self._wait_for_exclusive_gpu(device_handle)
+        times, stdout = self._replay_batch([config], self.TimingWarmupMs,
+                                           extra=['--metrics=default'])
+        values = {m.group(1): float(m.group(2)) for m in re.finditer(
+            r'\|\|NVMetric\|\| (\S+): ([-+0-9.eE]+)', stdout or '')}
+        if 0 not in times or not values:
+            print('Replay did not report hardware metrics', flush=True)
+            return [[]], durations, energies, [None], [None]
+        self.LastMetrics.update(values)
+        self.LastMetrics['metrics_warmup_ms'] = float(self.TimingWarmupMs)
+        return ([[]], durations, energies,
+                [values.get('l1tex__t_requests_pipe_lsu_mem_global_op_ld.sum')],
+                [values.get('l1tex__t_requests_pipe_lsu_mem_global_op_st.sum')])

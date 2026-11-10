@@ -13,7 +13,9 @@ def objective_values(speedup, energy_gain):
     def safe_log(x):
         # Missing measurements (NaN) are scored like invalid configs.
         return math.log(x) if x == x and x > 1e-6 else math.log(0.01)
-    return {'speedup': safe_log(speedup), 'energy': safe_log(energy_gain)}
+    s, e = safe_log(speedup), safe_log(energy_gain)
+    # EDP and ED^2P improvements (delay = 1/speedup) are products in linear space.
+    return {'speedup': s, 'energy': e, 'edp': s + e, 'ed2p': 2 * s + e}
 
 
 class BOSearcher:

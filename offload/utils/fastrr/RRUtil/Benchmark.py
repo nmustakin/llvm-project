@@ -740,6 +740,10 @@ class Kernel:
             db.Data[self.getDefaultKey()]['classify_profiles'] = 0
             db.Update()
 
+        if options.pop('metrics_baseline_only', False):
+            # Metrics only classify the baseline: later full measurements (promotions)
+            # skip the metrics replay. Kernel.SkipMetrics stays set; callers reset it.
+            Kernel.SkipMetrics = True
         strategy, target, fidelity = algorithm, 'objective', 'full'
         pool = options.pop('pool', None)
         if algorithm == 'adaptive':
@@ -762,6 +766,13 @@ class Kernel:
                 options['max_batches'] = options.get('saturated_batches', 1)
                 print(f'Class budget: kernel classified {klass}; '
                       f'{options["max_batches"]} batch(es)', flush=True)
+        elif algorithm == 'motpe-batch':
+            # FastRR's energy mode (F1): constant-liar multi-objective TPE over batch
+            # screens that carry time and energy (Upstream batch energy windows,
+            # RR_BATCH_ENERGY_MS). The best screens of each objective are promoted.
+            assert len(objectives) > 1, 'motpe-batch needs several objectives'
+            strategy, fidelity = 'motpe', 'batch'
+            options['constant_liar'] = True
         elif algorithm == 'tpe-portfolio':
             strategy = 'tpe'
             options['initial_points'] = build_portfolio(
@@ -900,7 +911,7 @@ class Kernel:
             if len(devices) > 1:
                 base_runs = self.sample_batch_parallel(
                     [(d, [[dict(NumThreads=None, NumTeams=None)] * 3]) for d in devices])
-                base_t = {d: float(np.median([t for v, t in r[0] if v]))
+                base_t = {d: float(np.median([t for v, t, *_ in r[0] if v]))
                           for d, r in zip(devices, base_runs)}
                 scale = {d: base_t[devices[0]] / base_t[d] for d in devices}
                 db.MetaData['device_scale'] = {str(d): scale[d] for d in devices}
@@ -943,8 +954,8 @@ class Kernel:
                     outs = self.sample_batch_parallel(jobs)
                     for (d, _), res, share in zip(jobs, outs, [s for s in shares.values() if s]):
                         for items, results in zip(share.values(), res):
-                            screened.append((items, [(v, t * scale[d] if v else t)
-                                                     for v, t in results]))
+                            screened.append((items, [(v, t * scale[d] if v else t, *rest)
+                                                     for v, t, *rest in results]))
                 else:
                     for rep, items in groups.items():
                         screened.append((items, self.sample_batch(
@@ -952,9 +963,11 @@ class Kernel:
                                   NumTeams=c['NumTeams']) for _, _, c, _ in items],
                             deviceID=device)))
                 for items, results in screened:
-                    for (point, trial, config, key), (valid, dur) in zip(items, results):
+                    for (point, trial, config, key), (valid, dur, *rest) in zip(items, results):
+                        # Batch energy (Upstream, RR_BATCH_ENERGY_MS) when the screen has it.
+                        en = rest[0] if rest and valid else float('nan')
                         db.Add(key, [None], [[]], [[dur]] if valid else [[]],
-                               [[float('nan')]], [None], [None], valid)
+                               [[en]], [None], [None], valid)
                         db.Data[key]['fidelity'] = 'batch'
                         db.Update()
                         spent += unit
@@ -1048,7 +1061,7 @@ class Kernel:
                   f'{source:8s} {key} speedup={trace[-1]["speedup"]:.4f}', flush=True)
             step += 1
 
-        shipped = None
+        shipped, shipped_sp = None, None
         if fidelity == 'batch' and options.get('confirm') == 'batch':
             # Cheap confirmation: re-time the best screens with `confirm_repeats`
             # interleaved repetitions in one batch replay per binary, next to the
@@ -1079,13 +1092,13 @@ class Kernel:
                     else [[self.sample_batch(g, deviceID=device) for g in jobs[0][1]]])
             confirmed = {}
             for (d, bins), res in zip(plan.items(), outs):
-                base_t = [t for v, t in res[0] if v]
+                base_t = [t for v, t, *_ in res[0] if v]
                 if not base_t:
                     continue
                 for ((_, entries), times) in zip(bins, res[1:]):
                     n = len(entries)
                     for j, (k, _) in enumerate(entries):
-                        ts = [t for v, t in times[j::n] if v]
+                        ts = [t for v, t, *_ in times[j::n] if v]
                         if ts:
                             confirmed[k] = float(np.median(base_t) / np.median(ts))
             for k, sp in confirmed.items():
@@ -1098,13 +1111,24 @@ class Kernel:
             db.Update()
             if confirmed:
                 shipped = max(confirmed, key=confirmed.get)
+                shipped_sp = confirmed[shipped]
                 print(f'Confirmed: ' + ', '.join(f'{sp:.4f}' for sp in sorted(
                     confirmed.values(), reverse=True)) + f'; shipping {shipped}', flush=True)
         elif fidelity in ('mf', 'batch'):
             # Promote the best screens to a full measurement and ship among them.
             rows = [(db.Speedup(k), k) for k in {t['key'] for t in trace}
                     if db.Data[k]['valid']]
-            for _, k in sorted(rows, reverse=True)[:options.get('promote', 5)]:
+            candidates = [k for _, k in sorted(rows, reverse=True)[:options.get('promote', 5)]]
+            energy_mode = len(objectives) > 1 and 'energy' in objectives
+            if energy_mode:
+                # Energy mode: the options['promote_each'] best screens of each objective.
+                n_each = options.get('promote_each', 3)
+                erows = [(db.EnergyImprov(k), k) for _, k in rows]
+                erows = [(e, k) for e, k in erows if e == e]
+                candidates = list(dict.fromkeys(
+                    [k for _, k in sorted(rows, reverse=True)[:n_each]]
+                    + [k for _, k in sorted(erows, reverse=True)[:n_each]]))
+            for k in candidates:
                 config = {name: int(v) for name, v in (p.split('=') for p in k.split('-'))
                           if name != 'DeviceID' and v != 'None'}
                 Valid, _, _, Duration, Energy, _, _ = measure(config)
@@ -1122,8 +1146,34 @@ class Kernel:
             promoted = [k for k in db.Data if db.Data[k].get('fidelity') == 'promoted']
             if promoted:
                 shipped = max(promoted, key=db.Speedup)
+                shipped_sp = db.Speedup(shipped)
+                if energy_mode:
+                    pe = [k for k in promoted if db.EnergyImprov(k) == db.EnergyImprov(k)]
+                    if pe:
+                        db.MetaData['shipped_energy'] = max(pe, key=db.EnergyImprov)
+        default_key = self.getDefaultKey()
+        if shipped is None:
+            # Full-evaluation searches: the best fully measured configuration.
+            full = [k for k in db.Data if k != default_key and db.Data[k].get('valid')
+                    and db.Data[k].get('fidelity') not in ('batch', 'mf')]
+            if full:
+                shipped = max(full, key=db.Speedup)
+                shipped_sp = db.Speedup(shipped)
+        # Never ship a configuration that the search itself measured as no faster than the
+        # default: fall back to the default (speedup 1 by definition). The threshold is
+        # options['ship_min_speedup'] (default 1.0) or $RR_SHIP_MIN_SPEEDUP.
+        min_sp = float(options.get('ship_min_speedup',
+                                   os.environ.get('RR_SHIP_MIN_SPEEDUP', 1.0)))
+        if shipped is not None and shipped != default_key and not (shipped_sp > min_sp):
+            print(f'Best measured speedup {shipped_sp:.4f} is not above {min_sp}; '
+                  f'shipping the default configuration instead of {shipped}', flush=True)
+            db.MetaData['shipped_candidate'] = shipped
+            db.MetaData['shipped_candidate_speedup'] = shipped_sp
+            db.MetaData['shipped_fallback'] = True
+            shipped = default_key
         if shipped is not None:
             db.MetaData['shipped'] = shipped
+            db.MetaData['shipped_speedup'] = 1.0 if shipped == default_key else shipped_sp
             db.Update()
         pd.DataFrame(trace).to_csv(
             f'{self.dbDir}/trace_{self.HashName}.csv', index=False)
