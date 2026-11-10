@@ -1,5 +1,5 @@
 #!/bin/bash
-# usage: job.sh <tag> <GPU> <stage1|stage2> <script.py> <args...>   (inside rr_current.sif on NVIDIA)
+# usage: job.sh <tag> <GPU> <stage1|stage2|energy> <script.py> <args...>   (inside rr_current.sif on NVIDIA)
 # Runs a Python script of this experiment on one GPU with the tuner's environment and the
 # stage's LLVM build, and leaves its exit code in exit/<tag>.txt. Stage 2 replays with
 # --relocate (the space-saving changes).
@@ -16,6 +16,13 @@ case $st in
   stage1) export RR_UPSTREAM_BUILD=$FASTRR_STAGE1_BUILD ;;
   stage2) export RR_UPSTREAM_BUILD=$FASTRR_STAGE2_BUILD
           export RR_UPSTREAM_REPLAY_FLAGS=--relocate ;;
+  # Stage 2 with kernel energy in every full measurement (window RR_ENERGY_MIN_MS, default
+  # 1000 ms; NVML on NVIDIA, the hwmon power file on AMD) and, with RR_UPSTREAM_METRICS=1,
+  # CUPTI metrics on NVIDIA.
+  energy) export RR_UPSTREAM_BUILD=$FASTRR_ENERGY_BUILD
+          export RR_UPSTREAM_REPLAY_FLAGS=--relocate RR_UPSTREAM_ENERGY=1
+          export RR_ENERGY_MIN_MS=${RR_ENERGY_MIN_MS:-1000} RR_UPSTREAM_METRICS=${RR_UPSTREAM_METRICS:-0}
+          export LD_LIBRARY_PATH=$FASTRR_NVMETRICS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH} ;;
   *) echo "unknown stage $st"; exit 2 ;;
 esac
 mkdir -p $X/exit

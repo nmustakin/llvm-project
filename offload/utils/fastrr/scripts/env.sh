@@ -13,6 +13,11 @@ LLVM_SRC=$(cd "$FASTRR/../../.." && pwd)
 : "${FASTRR_STAGE2_BUILD:=$LLVM_SRC/build-rr-2026-10-13}"
 : "${FASTRR_STAGE1_SRC:=/data2/nmn/llvm/llvm-project-taco}"
 : "${FASTRR_STAGE1_BUILD:=$FASTRR_STAGE1_SRC/build}"
+# The build of this branch (stage 2 with energy and metrics in the replay tool: --energy-ms,
+# --metrics), for the energy study (job.sh energy). The default is the stage 2 build.
+: "${FASTRR_ENERGY_BUILD:=$FASTRR_STAGE2_BUILD}"
+# NVIDIA only: the directory of libnv_metrics.so (github.com/nmustakin/nvmetrics) for --metrics.
+: "${FASTRR_NVMETRICS:=/data2/nmn/nvmetrics/build/lib}"
 # zstd installation the stage 2 build links (CMAKE_PREFIX_PATH).
 : "${FASTRR_ZSTD:=/data2/nmn/zstd-1.5.6/install}"
 # ROCm installation for AMD GPUs (build-amd.sh, Upstream.py); needs hsa_amd_vmem_* (ROCm 6.0+).
@@ -40,7 +45,7 @@ case $FASTRR_TARGET in
 esac
 
 export FASTRR LLVM_SRC FASTRR_EXP FASTRR_REC FASTRR_STAGE2_BUILD FASTRR_STAGE1_SRC \
-  FASTRR_STAGE1_BUILD FASTRR_ZSTD FASTRR_HECBENCH FASTRR_POOL FASTRR_PYLIB FASTRR_SIM \
+  FASTRR_STAGE1_BUILD FASTRR_ENERGY_BUILD FASTRR_NVMETRICS FASTRR_ZSTD FASTRR_HECBENCH FASTRR_POOL FASTRR_PYLIB FASTRR_SIM \
   FASTRR_FIGURES FASTRR_SIF FASTRR_BINDS FASTRR_ROCM \
   FASTRR_TARGET FASTRR_VISIBLE FASTRR_AMD_ARCH FASTRR_PYTHON FASTRR_ROCM_DEVICE_LIBS
 

@@ -12,6 +12,7 @@ recording with `llvm-omp-kernel-replay`, so the application never reruns.
 |---|---|
 | `RRUtil/` | The tuner. `Upstream.py` connects it to upstream record/replay; `Search.py` holds the search strategies and the ranking model; `Benchmark.py` holds `Kernel.Search`. Copied from branch `fastrr-upstream` of openmp-rr (`record-replay/RR/RRUtil`). |
 | `benchmarks/` | LULESH (`lulesh-omp`), miniFE (`miniFE-omp`), and the second inputs of the input study (`inputs`), from openmp-rr. |
+| `benchmarks/hecbench/` | The `Makefile.rr` of every HeCBench application of the T4 experiments, the MPI stub of miniWeather, and the RSBench mapping fix; `install.sh` puts them into the HeCBench checkout (`benchmarks/hecbench/README.md`). |
 | `data/pool_landscapes.csv` | Training pool of the ranking model: grid datasets of 48 kernels measured with the LLVM 16 fork. |
 | `data/pool_mi50.csv` | MI50 training pool (`FASTRR_POOL` on AMD): grid datasets of 43 kernels of 10 applications measured with this branch on gfx906 (`scripts/make_pool.py` from `grid.py` output); class `none` until the rocprof classification is wired in. |
 | `scripts/env.sh` | Every path and the container. Set variables before sourcing it to override the defaults. |
@@ -35,7 +36,8 @@ only for the stage 1 against stage 2 comparisons (`space_measure.py`, `cold_load
   `pip install --target DIR xgboost-cpu==2.1.4 optuna==3.6.1`.
 - zstd 1.5.6 installed with its CMake package (`FASTRR_ZSTD`).
 - HeCBench sources (github.com/zjin-lcf/HeCBench, commit f0c817a), the `src/` directory
-  (`FASTRR_HECBENCH`).
+  (`FASTRR_HECBENCH`), prepared with `bash benchmarks/hecbench/install.sh` (Makefile.rr files
+  and the RSBench fix).
 - Disk: the stage 2 recordings of all applications take about 1.3 GiB; stage 1 recordings
   take about 100 GiB.
 
@@ -86,7 +88,30 @@ jobs in a named tmux session, as in the commands below.
      sizes, device memory, and load times of both stages (the space table).
    `orchestrate.sh <stage> <methods>` runs the 20 kernels of the first replication on one
    stage. The scripts' lanes use GPUs 1 to 7; edit them to fit the machine.
-5. **Analysis**: `analyze.py` (stage 1 against stage 2), then `analyze_paper.py` (every number
+5. **Energy study** (NVIDIA; the build of this branch, whose replay tool has `--energy-ms`
+   and `--metrics`, as `FASTRR_ENERGY_BUILD`): `orchestrate_energy24.sh`, run on the host in
+   tmux, repeats the conference workflow with kernel energy. It runs four phases:
+   - **record:** records the 24 LULESH and miniFE kernels with this build
+     (`record_app.py energy`).
+   - **search:** BO with 30 initial and 200 suggestions, one seed, no cache, on each kernel,
+     once per objective (speedup, energy, EDP, ED²P; 96 runs, `energy_search.py`). Every
+     evaluation measures the kernel energy per launch through NVML over a 1,000 ms window
+     (`RR_ENERGY_MIN_MS`).
+   - **validate:** re-measures the default and every shipped configuration of a kernel in 10
+     randomized rounds with 3,000 ms windows (`energy_validate.py`).
+   - **summary:** validated speedups and energy improvements per objective
+     (`energy_summary.py`).
+
+   A 300 ms window varies by a median of 14.3% between repetitions on the T4, against 5.8% at
+   1,000 ms and 3.5% at 3,000 ms. Set `RR_UPSTREAM_METRICS=1` to add CUPTI metrics to every
+   evaluation as the conference version did, which makes the search about four times longer;
+   this needs `libnv_metrics.so` in `FASTRR_NVMETRICS`. `job.sh <tag> <GPU> energy <script>`
+   runs any script with this environment. Each phase is resumable.
+
+   On the T4 data of the paper (300 ms search windows, re-validated at 3,000 ms),
+   `energy_summary.py` gives energy improvements of 1.149× to 1.157× and speedups of 1.154× to
+   1.168× for the four objectives.
+6. **Analysis**: `analyze.py` (stage 1 against stage 2), then `analyze_paper.py` (every number
    of the paper, `paper-analysis.log` and `paper/*.csv`) and `make_figures.py`
    (`$FASTRR_FIGURES`). Run them in the container after sourcing `env.sh`, with
    `FASTRR_PYLIB` on `PYTHONPATH`.
@@ -135,3 +160,13 @@ brought up on an AMD Instinct MI50 (gfx906).
 `RR_UPSTREAM_REPLAY_FLAGS=--relocate` (stage 2), `RR_TIMING_TRIES=2`, `RR_RANK_CACHE`
 (trained ranking models, in `$FASTRR_EXP/rank-cache`), `CUDA_VISIBLE_DEVICES`, and
 `CUDA_DEVICE_ORDER=PCI_BUS_ID`.
+
+Energy and metrics (`job.sh ... energy` sets the first four):
+
+| Variable | Meaning |
+|---|---|
+| `RR_UPSTREAM_ENERGY=1` | NVIDIA: measure kernel energy (`--energy-ms`, NVML). AMD GPUs measure energy whenever the GPU has a hwmon power file (`--power-file`). |
+| `RR_ENERGY_MIN_MS` | Energy window of a full measurement, in ms (`job.sh energy`: 1000; tuner default 300). |
+| `RR_UPSTREAM_METRICS=1` | NVIDIA: CUPTI metrics (`--metrics=default`) in one more process per full measurement. |
+| `LD_LIBRARY_PATH` | Includes `FASTRR_NVMETRICS`, the directory of `libnv_metrics.so`. |
+| `RR_BATCH_ENERGY_MS` | With energy, an energy window of this length for every configuration of a batch screen (MOTPE over batches, `motpe-batch`). |
