@@ -115,6 +115,8 @@ protected:
   void *StartAddr = nullptr;
   uint64_t TotalSize = 0;
   uint64_t CurrentSize = 0;
+  /// Size of the untracked allocations at the end of the memory space.
+  uint64_t UntrackedSize = 0;
 
   /// Status of the record or replay.
   StatusTy Status;
@@ -263,6 +265,10 @@ public:
 
   /// Allocates device memory from the record replay space.
   Expected<void *> allocate(uint64_t Size);
+  /// Allocates device memory from the end of the record replay space. The
+  /// memory snapshots do not cover it. When replaying, it holds a device copy
+  /// of the recorded memory.
+  Expected<void *> allocateUntracked(uint64_t Size);
   Error deallocate(void *Ptr);
 
 private:

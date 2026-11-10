@@ -23,19 +23,19 @@
 
 // BATCH:      ||ReplayConfig|| index: 0 num_teams: 256 num_threads: {{[1-9][0-9]*}}
 // BATCH-COUNT-3: Replay time
-// BATCH-NEXT: ||ReplayTiming|| duration_seconds: {{[0-9.e+-]+}}
+// BATCH:      ||ReplayTiming|| duration_seconds: {{[0-9.e+-]+}}
 // BATCH-NEXT: Replay done, device memory verified
 // BATCH-NEXT: ||ReplayConfig|| index: 1 num_teams: 256 num_threads: 1
 // BATCH-COUNT-3: Replay time
-// BATCH-NEXT: ||ReplayTiming||
+// BATCH:      ||ReplayTiming||
 // BATCH-NEXT: Replay done, device memory verified
 // BATCH-NEXT: ||ReplayConfig|| index: 2 num_teams: 256 num_threads: 32
 // BATCH-COUNT-3: Replay time
-// BATCH-NEXT: ||ReplayTiming||
+// BATCH:      ||ReplayTiming||
 // BATCH-NEXT: Replay done, device memory verified
 // BATCH-NEXT: ||ReplayConfig|| index: 3 num_teams: 256 num_threads: 64
 // BATCH-COUNT-3: Replay time
-// BATCH-NEXT: ||ReplayTiming||
+// BATCH:      ||ReplayTiming||
 // BATCH-NEXT: Replay done, device memory verified
 // BATCH-NOT: ||ReplayConfig||
 

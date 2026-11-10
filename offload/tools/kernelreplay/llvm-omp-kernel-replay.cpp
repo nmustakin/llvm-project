@@ -22,8 +22,10 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/JSON.h"
+#include "llvm/Support/MathExtras.h"
 #include "llvm/Support/MemoryBuffer.h"
 
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -84,6 +86,27 @@ static cl::opt<std::string> BatchOpt(
              "'#' are ignored. The recorded inputs are restored before each "
              "replay."),
     cl::init(""), cl::cat(ReplayOptions));
+
+static cl::opt<uint32_t> WarmupMsOpt(
+    "warmup-ms",
+    cl::desc("Replay the first launch configuration repeatedly for at least "
+             "this many milliseconds before timing it, so that the device "
+             "reaches a steady clock."),
+    cl::init(0), cl::cat(ReplayOptions));
+
+static cl::opt<uint32_t> RewarmMsOpt(
+    "rewarm-ms",
+    cl::desc("With --batch, replay every later launch configuration "
+             "repeatedly for at least this many milliseconds before timing "
+             "it."),
+    cl::init(0), cl::cat(ReplayOptions));
+
+static cl::opt<bool> RestoreFromDeviceOpt(
+    "restore-from-device",
+    cl::desc("Keep a copy of the recorded memory on the device, and restore "
+             "the replay memory from it instead of from the host after the "
+             "first replay."),
+    cl::init(false), cl::cat(ReplayOptions));
 
 template <typename... ArgsTy>
 Error createErr(const char *ErrFmt, ArgsTy &&...Args) {
@@ -409,13 +432,6 @@ Error replayKernel() {
   // Register the image and the offload entries.
   __tgt_register_lib(&Desc);
 
-  int Rc = __tgt_activate_record_replay(
-      DeviceId, VAllocSize, VAllocAddr, /*IsRecord=*/false,
-      VerifyOpt || SaveOutputOpt,
-      /*EmitReport=*/false, Directory.c_str());
-  if (Rc != OMP_TGT_SUCCESS)
-    return createErr("failed to activate record replay");
-
   // Load the record input file.
   Filepath.replace_extension("record_input");
   auto RecordInputBufferOrErr =
@@ -425,13 +441,37 @@ Error replayKernel() {
     return createErr("failed to read the kernel record input file");
   auto RecordInputBuffer = std::move(RecordInputBufferOrErr.get());
 
+  // The device copy of the recorded memory is allocated from the replay
+  // memory, after the recorded allocation, so reserve room for it.
+  uint64_t ReplayMemorySize = VAllocSize;
+  if (RestoreFromDeviceOpt)
+    ReplayMemorySize += alignTo(RecordInputBuffer->getBufferSize(), 16);
+
+  int Rc = __tgt_activate_record_replay(
+      DeviceId, ReplayMemorySize, VAllocAddr, /*IsRecord=*/false,
+      VerifyOpt || SaveOutputOpt,
+      /*EmitReport=*/false, Directory.c_str());
+  if (Rc != OMP_TGT_SUCCESS)
+    return createErr("failed to activate record replay");
+
   Filepath.replace_extension("record_output");
   const std::string RecordOutputFilename = Filepath.string();
 
   // The device allocation is kept in the outcome and reused by every replay;
   // each replay restores the recorded inputs and globals before launching.
   KernelReplayOutcomeTy Outcome;
+  Outcome.RestoreFromDevice = RestoreFromDeviceOpt;
   uint32_t NumFailed = 0;
+
+  auto Replay = [&](const LaunchConfigTy &Config) {
+    return __tgt_target_kernel_replay(
+        /*Loc=*/nullptr, DeviceId, OffloadEntries[0].Address,
+        const_cast<char *>(RecordInputBuffer->getBufferStart()),
+        Outcome.ReplayDeviceAlloc, RecordInputBuffer->getBufferSize(),
+        NumGlobals ? &OffloadEntries[1] : nullptr, NumGlobals, TgtArgs.data(),
+        TgtArgOffsets.data(), NumArgs, Config.NumTeams, Config.NumThreads,
+        SharedMemorySize, LoopTripCount, &Outcome);
+  };
 
   for (size_t Idx = 0; Idx < Configs.size(); ++Idx) {
     const LaunchConfigTy &Config = Configs[Idx];
@@ -459,29 +499,45 @@ Error replayKernel() {
       }
     }
 
-    // Perform the kernel replay for each repetition.
-    SmallVector<uint64_t> TimesNs;
+    // A failed launch may leave the device in an unknown state, so it stops a
+    // batch too.
+    auto ReplayErr = [&]() {
+      if (IsBatch)
+        return createErr("failed to replay kernel (configuration %zu)", Idx);
+      return createErr("failed to replay kernel");
+    };
+
+    // Warm up the device with untimed replays of this configuration.
+    using ClockTy = std::chrono::steady_clock;
+    const uint32_t WarmupMs = Idx == 0 ? WarmupMsOpt : RewarmMsOpt;
+    uint64_t NumWarmupReplays = 0;
+    for (auto Start = ClockTy::now();
+         ClockTy::now() - Start < std::chrono::milliseconds(WarmupMs);
+         ++NumWarmupReplays)
+      if (Replay(Config) != OMP_TGT_SUCCESS)
+        return ReplayErr();
+    if (NumWarmupReplays)
+      outs() << TOOL_PREFIX << " Warm-up replays: " << NumWarmupReplays << "\n";
+
+    // Perform the kernel replay for each repetition. Report the times measured
+    // with device events when every repetition has one.
+    SmallVector<uint64_t> TimesNs, DeviceTimesNs;
     Outcome.OutputFilepath.clear();
     for (uint32_t R = 1; R <= RepetitionsOpt; ++R) {
-      Rc = __tgt_target_kernel_replay(
-          /*Loc=*/nullptr, DeviceId, OffloadEntries[0].Address,
-          const_cast<char *>(RecordInputBuffer->getBufferStart()),
-          Outcome.ReplayDeviceAlloc, RecordInputBuffer->getBufferSize(),
-          NumGlobals ? &OffloadEntries[1] : nullptr, NumGlobals, TgtArgs.data(),
-          TgtArgOffsets.data(), NumArgs, Config.NumTeams, Config.NumThreads,
-          SharedMemorySize, LoopTripCount, &Outcome);
-      // A failed launch may leave the device in an unknown state, so it stops
-      // a batch too.
-      if (Rc != OMP_TGT_SUCCESS) {
-        if (IsBatch)
-          return createErr("failed to replay kernel (configuration %zu)", Idx);
-        return createErr("failed to replay kernel");
-      }
+      if (Replay(Config) != OMP_TGT_SUCCESS)
+        return ReplayErr();
 
       TimesNs.push_back(Outcome.KernelReplayTimeNs);
       outs() << TOOL_PREFIX << " Replay time (" << R
              << "): " << Outcome.KernelReplayTimeNs << " ns\n";
+      if (Outcome.KernelReplayDeviceTimeNs) {
+        DeviceTimesNs.push_back(Outcome.KernelReplayDeviceTimeNs);
+        outs() << TOOL_PREFIX << " Replay device time (" << R
+               << "): " << Outcome.KernelReplayDeviceTimeNs << " ns\n";
+      }
     }
+    if (DeviceTimesNs.size() == TimesNs.size())
+      TimesNs = std::move(DeviceTimesNs);
 
     if (IsBatch) {
       // Report the median replay time of the configuration.

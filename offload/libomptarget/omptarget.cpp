@@ -2445,13 +2445,40 @@ int target_replay(ident_t *Loc, DeviceTy &Device, void *HostPtr,
   if (ReplayOutcome)
     ReplayOutcome->ReplayDeviceAlloc = TgtPtr;
 
-  // Initialize the device memory.
-  if (DeviceMemorySize) {
+  // Initialize the device memory, from the device copy of the recorded memory
+  // if there is one.
+  void **Backup = ReplayOutcome && ReplayOutcome->RestoreFromDevice
+                      ? &ReplayOutcome->ReplayDeviceBackup
+                      : nullptr;
+  if (DeviceMemorySize && Backup && *Backup) {
+    int Ret = Device.dataExchange(*Backup, Device, TgtPtr, DeviceMemorySize,
+                                  AsyncInfo);
+    if (Ret != OFFLOAD_SUCCESS) {
+      REPORT() << "Failed to restore the device memory from its copy.";
+      return OFFLOAD_FAIL;
+    }
+  } else if (DeviceMemorySize) {
     int Ret =
         Device.submitData(TgtPtr, DeviceMemory, DeviceMemorySize, AsyncInfo);
     if (Ret != OFFLOAD_SUCCESS) {
       REPORT() << "Failed to submit data to the device memory.";
       return OFFLOAD_FAIL;
+    }
+
+    // Keep a device copy of the recorded memory for the next replays.
+    if (Backup) {
+      *Backup = Device.allocReplayCopy(DeviceMemorySize);
+      if (!*Backup) {
+        REPORT() << "Failed to allocate the device copy of the recorded "
+                    "memory.";
+        return OFFLOAD_FAIL;
+      }
+      Ret = Device.dataExchange(TgtPtr, Device, *Backup, DeviceMemorySize,
+                                AsyncInfo);
+      if (Ret != OFFLOAD_SUCCESS) {
+        REPORT() << "Failed to copy the recorded memory on the device.";
+        return OFFLOAD_FAIL;
+      }
     }
   }
 

@@ -170,6 +170,11 @@ struct DeviceTy {
   void *allocData(int64_t Size, void *HstPtr = nullptr,
                   int32_t Kind = TARGET_ALLOC_DEFAULT);
 
+  /// When replaying, allocates \p Size bytes of device memory that the replay
+  /// memory snapshots do not cover, to keep a copy of the recorded memory.
+  /// Returns nullptr on failure.
+  void *allocReplayCopy(int64_t Size);
+
   /// Deallocates memory which \p TgtPtrBegin points at and returns
   /// OFFLOAD_SUCCESS/OFFLOAD_FAIL when succeeds/fails. p Kind dictates what
   /// allocator should be used (host, shared, device).

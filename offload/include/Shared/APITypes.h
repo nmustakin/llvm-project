@@ -143,9 +143,17 @@ struct KernelReplayOutcomeTy {
   /// The execution time of the kernel replay in nanoseconds. This time includes
   /// the the kernel launch and synchronization time. Replay I/O is excluded.
   uint64_t KernelReplayTimeNs = 0;
+  /// The execution time of the kernel measured with device events in
+  /// nanoseconds, or zero if it could not be measured.
+  uint64_t KernelReplayDeviceTimeNs = 0;
   /// The pointer to the device memory allocation used to replay. This can be
   /// reused for future replays of the same kernel.
   void *ReplayDeviceAlloc = nullptr;
+  /// Whether to keep a device copy of the recorded memory and to restore the
+  /// replay memory from it, instead of from the host, in later replays.
+  bool RestoreFromDevice = false;
+  /// The device copy of the recorded memory, if \p RestoreFromDevice is set.
+  void *ReplayDeviceBackup = nullptr;
 };
 }
 

@@ -1260,8 +1260,23 @@ reported with a `||ReplayError|| index: <N>` line, and the remaining
 configurations are still replayed; the tool then exits with an error. The
 `--batch` flag cannot be combined with `--num-teams` or `--num-threads`.
 
+To time launch configurations reproducibly, the tool can warm up the device and
+avoid copying the recorded memory from the host before every replay:
+
+* `--warmup-ms=<ms>` replays the first configuration repeatedly, untimed, for at
+  least this many milliseconds before its timed repetitions, so that the GPU
+  reaches a steady clock. With `--batch`, `--rewarm-ms=<ms>` does the same for
+  every later configuration.
+* `--restore-from-device` keeps a copy of the recorded memory on the device
+  after the first replay and restores the replay memory from it, with a
+  device-to-device copy, instead of from the host. The copy needs as much
+  device memory again as the recorded memory.
+
 The time reported by the replay tool corresponds to the host-side kernel launch
-and synchronization time. If highly precise kernel timing is required, it is
+and synchronization time. When the device supports it, the tool also reports
+the kernel time measured with device events (`Replay device time`), and the
+`||ReplayTiming||` line of a batch reports the median of these. If highly
+precise kernel timing is required, it is
 recommended to use dedicated profiling tools in conjunction with the replay
 tool.
 

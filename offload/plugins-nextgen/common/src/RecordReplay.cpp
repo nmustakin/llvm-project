@@ -155,12 +155,26 @@ Expected<void *> RecordReplayTy::allocate(uint64_t Size) {
   int64_t AlignedSize = (Size + (Alignment - 1)) & (~(Alignment - 1));
 
   std::lock_guard<std::mutex> LG(AllocationLock);
-  if (CurrentSize + AlignedSize > TotalSize)
+  if (CurrentSize + AlignedSize + UntrackedSize > TotalSize)
     return Plugin::error(ErrorCode::OUT_OF_RESOURCES,
                          "run out of record replay memory");
   void *Alloc = (char *)StartAddr + CurrentSize;
   CurrentSize += AlignedSize;
   return Alloc;
+}
+
+Expected<void *> RecordReplayTy::allocateUntracked(uint64_t Size) {
+  assert(StartAddr && "Expected memory has been pre-allocated");
+  constexpr int Alignment = 16;
+  // Assume alignment is a power of 2.
+  int64_t AlignedSize = (Size + (Alignment - 1)) & (~(Alignment - 1));
+
+  std::lock_guard<std::mutex> LG(AllocationLock);
+  if (CurrentSize + UntrackedSize + AlignedSize > TotalSize)
+    return Plugin::error(ErrorCode::OUT_OF_RESOURCES,
+                         "run out of record replay memory");
+  UntrackedSize += AlignedSize;
+  return (char *)StartAddr + TotalSize - UntrackedSize;
 }
 
 Error RecordReplayTy::deallocate(void *Ptr) { return Plugin::success(); }
